@@ -10,7 +10,8 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import BotCommand, BotCommandScopeDefault
+from aiogram.types import BotCommand, BotCommandScopeDefault, ErrorEvent
+from aiogram.exceptions import TelegramRetryAfter
 from loguru import logger
 
 from config import load_config
@@ -98,6 +99,16 @@ async def on_shutdown(bot: Bot) -> None:
     await close_db()
 
 
+async def on_error(event: ErrorEvent) -> bool:
+    """Global safety net: log any unhandled error so polling never dies."""
+    exc = event.exception
+    if isinstance(exc, TelegramRetryAfter):
+        logger.warning(f"Flood control: retry after {exc.retry_after}s")
+        return True
+    logger.exception(f"Unhandled error: {exc}")
+    return True  # mark handled — keep the bot alive
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 async def main() -> None:
@@ -122,6 +133,8 @@ async def main() -> None:
     dp.include_router(user_router)
     dp.include_router(settings_router)
     dp.include_router(moderation_router)
+
+    dp.errors.register(on_error)
 
     async def _startup() -> None:
         await on_startup(bot, config)
