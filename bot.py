@@ -65,22 +65,31 @@ BANNER = r"""
 PUBLIC_COMMANDS = [
     BotCommand(command="rank", description="🏆 Моя карточка охотника"),
     BotCommand(command="top", description="📊 Топ охотников чата"),
-    BotCommand(command="invites", description="👥 Топ по приглашениям"),
+    BotCommand(command="wallet", description="🔹 Хранилище Мана-руды"),
+    BotCommand(command="shop", description="🛒 Рынок гильдии"),
     BotCommand(command="daily", description="🎁 Ежедневный бонус"),
     BotCommand(command="invite", description="⚔️ Пригласить друзей"),
+    BotCommand(command="myref", description="🔗 Моя реф-ссылка"),
+    BotCommand(command="vip", description="👑 VIP-зал"),
+    BotCommand(command="invites", description="👥 Топ по приглашениям"),
+    BotCommand(command="transfer", description="💸 Передать руду (ответом)"),
     BotCommand(command="info", description="ℹ️ Инфо о пользователе"),
     BotCommand(command="stats", description="📈 Статистика чата"),
     BotCommand(command="rules", description="📜 Правила чата"),
     BotCommand(command="help", description="📋 Список команд"),
-    BotCommand(command="ping", description="⚡ Проверить бота"),
     BotCommand(command="id", description="🆔 Узнать свой ID"),
 ]
 
 # Commands shown only in private chat with the bot.
 PRIVATE_COMMANDS = [
     BotCommand(command="start", description="⚡ Главное меню бота"),
+    BotCommand(command="wallet", description="🔹 Хранилище Мана-руды"),
+    BotCommand(command="shop", description="🛒 Рынок гильдии"),
+    BotCommand(command="buy", description="💎 Купить руду за Stars"),
+    BotCommand(command="myref", description="🔗 Моя реф-ссылка"),
+    BotCommand(command="vip", description="👑 VIP-зал"),
+    BotCommand(command="donate", description="💛 Поддержать проект"),
     BotCommand(command="help", description="📋 Список команд"),
-    BotCommand(command="ping", description="⚡ Проверить бота"),
     BotCommand(command="id", description="🆔 Узнать свой ID"),
 ]
 
@@ -101,6 +110,9 @@ ADMIN_ONLY_COMMANDS = [
     BotCommand(command="words", description="📋 Чёрный список"),
     BotCommand(command="setwelcome", description="📝 Изменить приветствие"),
     BotCommand(command="setrules", description="📜 Изменить правила"),
+    BotCommand(command="setgoal", description="🎯 Цель приглашений"),
+    BotCommand(command="goals", description="🎯 Список целей"),
+    BotCommand(command="ads", description="📢 Реклама в чате on/off"),
 ]
 
 # Admins see public + management commands.
@@ -112,6 +124,9 @@ OWNER_COMMANDS = PRIVATE_COMMANDS + [
     BotCommand(command="gstats", description="📊 Глобальная статистика"),
     BotCommand(command="chats", description="💬 Список чатов"),
     BotCommand(command="broadcast", description="📢 Рассылка"),
+    BotCommand(command="newad", description="📢 Новая рекламная кампания"),
+    BotCommand(command="ads", description="📢 Кампании и статистика"),
+    BotCommand(command="sendads", description="📤 Разослать рекламу сейчас"),
 ]
 
 

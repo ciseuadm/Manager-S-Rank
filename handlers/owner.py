@@ -8,10 +8,13 @@ from aiogram.filters import Command, BaseFilter
 from aiogram.types import Message, CallbackQuery
 from loguru import logger
 
-from database import get_all_chats, get_global_stats
+from database import (
+    get_all_chats, get_global_stats, get_mana_emission,
+    payments_total, ads_global_stats,
+)
 from keyboards import owner_keyboard
 from services import broadcast
-from utils import is_owner
+from utils import is_owner, format_mana
 
 router = Router()
 
@@ -36,11 +39,16 @@ PANEL_MSG = (
     "<i>S-Ранг Менеджер • режим создателя</i>\n\n"
     "Привет, Монарх. Отсюда ты управляешь ботом во всех чатах.\n\n"
     "<b>Команды владельца:</b>\n"
-    "/gstats — глобальная статистика\n"
+    "/gstats — глобальная статистика (чаты, экономика, доход, реклама)\n"
     "/chats — список всех чатов бота\n"
     "/broadcast <code>текст</code> — рассылка во все чаты\n"
     "   ↳ или ответь на сообщение командой /broadcast\n"
     "/leavechat <code>id</code> — выйти из чата\n\n"
+    "<b>📢 Реклама (монетизация):</b>\n"
+    "/newad — создать рекламную кампанию (мастер)\n"
+    "/ads — список кампаний и статистика\n"
+    "/sendads — разослать активные кампании сейчас\n"
+    "/pausead, /resumead <code>id</code> — пауза/возобновление\n\n"
     "Ты также <b>супер-админ</b> во всех чатах: тебе доступны все\n"
     "команды модерации, даже если ты не админ группы."
 )
@@ -48,6 +56,9 @@ PANEL_MSG = (
 
 async def _stats_text() -> str:
     s = await get_global_stats()
+    eco = await get_mana_emission()
+    pay = await payments_total()
+    ads = await ads_global_stats()
     return (
         "📊 <b>ГЛОБАЛЬНАЯ СТАТИСТИКА</b>\n\n"
         f"💬 Чатов: <b>{s['chats']}</b>\n"
@@ -55,7 +66,16 @@ async def _stats_text() -> str:
         f"✉️ Всего сообщений: <b>{s['messages']}</b>\n"
         f"🗑 Удалено нарушений: <b>{s['deleted']}</b>\n"
         f"⚠️ Выдано предупреждений: <b>{s['warns']}</b>\n"
-        f"🚫 Банов: <b>{s['bans']}</b>"
+        f"🚫 Банов: <b>{s['bans']}</b>\n\n"
+        "🔹 <b>ЭКОНОМИКА</b>\n"
+        f"В обороте: <b>{format_mana(eco.get('supply', 0))}</b>\n"
+        f"Всего добыто: <b>{format_mana(eco.get('earned', 0))}</b> | "
+        f"кошельков: <b>{eco.get('holders', 0)}</b>\n\n"
+        "💳 <b>ДОХОД (Stars)</b>\n"
+        f"⭐ Всего: <b>{pay.get('stars', 0)}</b> | заказов: <b>{pay.get('orders', 0)}</b>\n\n"
+        "📢 <b>РЕКЛАМА</b>\n"
+        f"Кампаний: <b>{ads.get('campaigns', 0)}</b> | активных: <b>{ads.get('active', 0)}</b> | "
+        f"показов: <b>{ads.get('impressions', 0)}</b>"
     )
 
 
