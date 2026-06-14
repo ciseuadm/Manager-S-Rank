@@ -8,7 +8,7 @@ from aiogram.filters.chat_member_updated import ChatMemberUpdatedFilter, JOIN_TR
 
 from database import (
     get_or_create_user, get_chat_settings, set_chat_title,
-    get_top_users, get_chat_stats, claim_daily, credit_invite,
+    get_top_users, get_chat_stats, claim_daily,
     get_top_inviters, update_user_rank,
 )
 from keyboards import invite_keyboard
