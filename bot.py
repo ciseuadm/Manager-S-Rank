@@ -22,7 +22,7 @@ from config import load_config
 from database import init_db, close_db
 from handlers import (
     moderation_router, admin_router, user_router, settings_router,
-    owner_router, economy_router, set_bot_id,
+    owner_router, economy_router, referral_router, set_bot_id,
 )
 from middlewares import ThrottleMiddleware
 from utils import set_owner_id, set_config
@@ -196,6 +196,7 @@ async def main() -> None:
     dp.include_router(user_router)
     dp.include_router(settings_router)
     dp.include_router(economy_router)
+    dp.include_router(referral_router)
     dp.include_router(moderation_router)
 
     dp.errors.register(on_error)

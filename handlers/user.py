@@ -2,7 +2,7 @@
 User-facing commands: /rank /top /stats /info /help /ping /id
 """
 from aiogram import Router, F, Bot
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 from aiogram.types import Message, ChatMemberUpdated
 from aiogram.filters.chat_member_updated import ChatMemberUpdatedFilter, JOIN_TRANSITION
 
@@ -12,13 +12,13 @@ from database import (
     get_top_inviters, update_user_rank,
 )
 from keyboards import invite_keyboard
-from services import award_daily
+from services import award_daily, register_bot_referral, register_chat_referral
 from utils import (
     calculate_rank, get_rank_label, get_rank_title,
     messages_to_next_rank, rank_progress_bar,
     mention_html, WELCOME_DEFAULT, HELP_MSG, START_MSG, BOTFATHER_COMMANDS,
     INVITE_MSG, DAILY_MSG, DAILY_DONE_MSG, RULES_DEFAULT, INVITE_JOIN_MSG,
-    RANK_UP_MSG, format_mana,
+    RANK_UP_MSG, format_mana, get_config,
 )
 
 router = Router()
@@ -30,7 +30,17 @@ INVITE_BONUS = 30
 # ── /start ────────────────────────────────────────────────────────────────────
 
 @router.message(Command("start"))
-async def cmd_start(message: Message) -> None:
+async def cmd_start(message: Message, command: CommandObject, bot: Bot) -> None:
+    # Deep-link referral: t.me/bot?start=ref_<inviter_id>
+    payload = (command.args or "").strip()
+    if payload.startswith("ref_") and message.from_user:
+        rest = payload[4:]
+        if rest.isdigit():
+            inviter_id = int(rest)
+            try:
+                await register_bot_referral(bot, inviter_id, message.from_user.id)
+            except Exception:
+                pass
     try:
         await message.answer(START_MSG, parse_mode="HTML")
     except Exception as e:
@@ -261,15 +271,25 @@ async def cmd_invite(message: Message, bot: Bot) -> None:
     user = message.from_user
     chat = message.chat
 
+    # Личная именная инвайт-ссылка → позволяет засчитать, кто кого привёл.
     link = None
     try:
-        full_chat = await bot.get_chat(chat.id)
-        if full_chat.username:
-            link = f"https://t.me/{full_chat.username}"
-        elif full_chat.invite_link:
-            link = full_chat.invite_link
+        personal = await bot.create_chat_invite_link(
+            chat.id, name=f"ref{user.id}"[:32]
+        )
+        link = personal.invite_link
     except Exception:
         pass
+
+    if not link:
+        try:
+            full_chat = await bot.get_chat(chat.id)
+            if full_chat.username:
+                link = f"https://t.me/{full_chat.username}"
+            elif full_chat.invite_link:
+                link = full_chat.invite_link
+        except Exception:
+            pass
     if not link:
         try:
             link = await bot.export_chat_invite_link(chat.id)
@@ -367,22 +387,44 @@ async def on_new_member(event: ChatMemberUpdated) -> None:
     except Exception:
         pass
 
-    # ── Реферальная награда: кто-то привёл нового участника ──────────────────────
-    inviter = event.from_user
-    if inviter and not inviter.is_bot and inviter.id != user.id:
-        await get_or_create_user(
-            inviter.id, event.chat.id,
-            username=inviter.username or "", full_name=inviter.full_name,
-        )
-        count = await credit_invite(inviter.id, event.chat.id, INVITE_BONUS)
+    # ── Реферальная атрибуция: кто привёл нового участника ──────────────────────
+    inviter_id = None
+    inviter_name = ""
+    source = "chat_join"
+
+    # 1) Если зашёл по личной именной ссылке (ref<id>) — берём оттуда.
+    inv_link = getattr(event, "invite_link", None)
+    if inv_link and inv_link.name and inv_link.name.startswith("ref"):
+        rest = inv_link.name[3:]
+        if rest.isdigit():
+            inviter_id = int(rest)
+            source = "invite_link"
+
+    # 2) Иначе — тот, кто добавил участника напрямую.
+    if inviter_id is None and event.from_user and not event.from_user.is_bot:
+        if event.from_user.id != user.id:
+            inviter_id = event.from_user.id
+            inviter_name = event.from_user.full_name
+
+    if inviter_id and inviter_id != user.id:
+        await get_or_create_user(inviter_id, event.chat.id, full_name=inviter_name)
         try:
-            await event.answer(
-                INVITE_JOIN_MSG.format(
-                    mention=mention_html(inviter),
-                    bonus=INVITE_BONUS,
-                    count=count,
-                ),
-                parse_mode="HTML",
+            count = await register_chat_referral(
+                event.bot, inviter_id, user.id, event.chat.id,
+                inviter_name=inviter_name, source=source,
             )
         except Exception:
-            pass
+            count = None
+        if count is not None:
+            try:
+                from utils import mention_html_raw
+                await event.answer(
+                    INVITE_JOIN_MSG.format(
+                        mention=mention_html_raw(inviter_id, inviter_name or "Охотник"),
+                        bonus=INVITE_BONUS,
+                        count=count,
+                    ),
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass

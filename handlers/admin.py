@@ -25,6 +25,11 @@ async def _check_admin(message: Message, bot: Bot) -> bool:
     return await require_admin(message, bot)
 
 
+async def _check_staff(message: Message, bot: Bot) -> bool:
+    """Soft moderation: Telegram admins + in-bot moderators (referral-earned)."""
+    return await require_admin(message, bot, allow_staff=True)
+
+
 async def _resolve_target(message: Message) -> tuple[int, str] | None:
     if message.reply_to_message and message.reply_to_message.from_user:
         u = message.reply_to_message.from_user
@@ -41,7 +46,7 @@ async def _resolve_target(message: Message) -> tuple[int, str] | None:
 
 @router.message(Command("warn"), F.chat.type.in_({"group", "supergroup"}))
 async def cmd_warn(message: Message, bot: Bot) -> None:
-    if not await _check_admin(message, bot):
+    if not await _check_staff(message, bot):
         return
 
     target = await _resolve_target(message)
@@ -155,7 +160,7 @@ async def cmd_warns(message: Message, bot: Bot) -> None:
 
 @router.message(Command("mute"), F.chat.type.in_({"group", "supergroup"}))
 async def cmd_mute(message: Message, bot: Bot) -> None:
-    if not await _check_admin(message, bot):
+    if not await _check_staff(message, bot):
         return
     target = await _resolve_target(message)
     if not target:
@@ -196,7 +201,7 @@ async def cmd_mute(message: Message, bot: Bot) -> None:
 
 @router.message(Command("unmute"), F.chat.type.in_({"group", "supergroup"}))
 async def cmd_unmute(message: Message, bot: Bot) -> None:
-    if not await _check_admin(message, bot):
+    if not await _check_staff(message, bot):
         return
     target = await _resolve_target(message)
     if not target:
@@ -312,7 +317,7 @@ async def cmd_kick(message: Message, bot: Bot) -> None:
 
 @router.message(Command("del"), F.chat.type.in_({"group", "supergroup"}))
 async def cmd_del(message: Message, bot: Bot) -> None:
-    if not await _check_admin(message, bot):
+    if not await _check_staff(message, bot):
         return
     if not message.reply_to_message:
         await message.reply("↩️ Ответь на сообщение для удаления.")

@@ -99,16 +99,42 @@ async def is_chat_admin(bot: Bot, chat_id: int, user_id: int | None) -> bool:
     return member.status in ("administrator", "creator")
 
 
-async def require_admin(message: Message, bot: Bot, *, silent: bool = False) -> bool:
+async def is_chat_staff(bot: Bot, chat_id: int, user_id: int | None) -> bool:
+    """
+    True for owner / Telegram admins / creators OR users holding an in-bot role
+    (moderator/admin earned via referral goals). Used for soft moderation
+    commands (warn/mute/del).
+    """
+    if await is_chat_admin(bot, chat_id, user_id):
+        return True
+    if not user_id:
+        return False
+    from database import get_chat_role
+    role = await get_chat_role(user_id, chat_id)
+    return role in ("moderator", "admin")
+
+
+async def require_admin(
+    message: Message, bot: Bot, *, silent: bool = False, allow_staff: bool = False
+) -> bool:
     """
     Gatekeeper for admin-only commands.
     Returns True for owner/admins. For everyone else it removes the command
     message (so the chat stays clean) and, unless `silent`, shows a short
     self-destructing notice instead of leaving permanent "no rights" spam.
+
+    `allow_staff=True` also admits in-bot moderators/admins (earned via referral
+    goals) — use it for soft moderation commands like warn/mute/del.
     """
     user = message.from_user
-    if user and await is_chat_admin(bot, message.chat.id, user.id):
-        return True
+    if user:
+        ok = (
+            await is_chat_staff(bot, message.chat.id, user.id)
+            if allow_staff
+            else await is_chat_admin(bot, message.chat.id, user.id)
+        )
+        if ok:
+            return True
     try:
         await message.delete()
     except Exception:
