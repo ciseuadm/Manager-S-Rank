@@ -13,11 +13,12 @@ from database import (
     get_blacklist_words, increment_stat,
 )
 from filters import analyze_message, flood_tracker
+from services import award_message, award_rank_up
 from utils import (
     calculate_rank, get_rank_label, get_rank_title,
     RANK_UP_MSG, WARN_MSG, MUTE_AUTO_MSG, BAN_AUTO_MSG,
-    DELETE_NOTIFY, FLOOD_WARN, VIOLATION_REASONS,
-    mention_html, is_owner,
+    DELETE_NOTIFY, FLOOD_WARN, VIOLATION_REASONS, MANA_RANK_UP_MSG,
+    mention_html, is_owner, format_mana,
 )
 
 router = Router()
@@ -168,11 +169,22 @@ async def _update_rank(message: Message, user_id: int, chat_id: int, bot: Bot) -
     msgs = await increment_messages(user_id, chat_id)
     new_rank = calculate_rank(msgs)
 
+    # Награда Мана-рудой за активность (с кулдауном внутри сервиса).
+    try:
+        await award_message(user_id, chat_id)
+    except Exception:
+        pass
+
     db_user = await get_or_create_user(user_id, chat_id)
     old_rank = db_user.get("rank", "E")
 
     if new_rank != old_rank:
         await update_user_rank(user_id, chat_id, new_rank)
+        bonus = 0
+        try:
+            bonus = await award_rank_up(user_id, chat_id, new_rank)
+        except Exception:
+            pass
         try:
             user = message.from_user
             rank_up_text = RANK_UP_MSG.format(
@@ -181,6 +193,8 @@ async def _update_rank(message: Message, user_id: int, chat_id: int, bot: Bot) -
                 new_label=get_rank_label(new_rank),
                 title=get_rank_title(new_rank),
             )
+            if bonus:
+                rank_up_text += "\n\n" + MANA_RANK_UP_MSG.format(bonus=format_mana(bonus))
             await message.answer(rank_up_text, parse_mode="HTML")
         except Exception:
             pass

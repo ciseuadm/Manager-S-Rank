@@ -1,0 +1,97 @@
+"""
+Economy business logic — earning and spending Мана-руда.
+
+Handlers and other services call these functions; raw SQL stays in
+database/economy.py. Balance is GLOBAL per user (one wallet across all chats).
+"""
+from typing import Optional
+
+from database import (
+    add_mana, spend_mana, get_wallet, get_wallet_balance,
+    can_reward_message, mark_message_reward,
+)
+from utils import get_config
+
+
+# Разовый бонус руды при достижении нового ранга.
+RANK_UP_BONUS = {
+    "D": 100,
+    "C": 250,
+    "B": 600,
+    "A": 1500,
+    "S": 5000,
+    "SS": 10000,
+    "SSS": 25000,
+}
+
+
+async def award_message(user_id: int, chat_id: int) -> int:
+    """
+    Reward a user for chat activity, respecting the per-message cooldown.
+    Returns the amount granted (0 if on cooldown / disabled).
+    """
+    cfg = get_config()
+    amount = cfg.mana_per_message
+    if amount <= 0:
+        return 0
+    if not await can_reward_message(user_id, cfg.mana_message_cooldown):
+        return 0
+    await add_mana(user_id, amount, "message", chat_id=chat_id)
+    await mark_message_reward(user_id)
+    return amount
+
+
+async def award_daily(user_id: int, chat_id: int) -> int:
+    cfg = get_config()
+    if cfg.mana_daily_bonus <= 0:
+        return 0
+    await add_mana(user_id, cfg.mana_daily_bonus, "daily", chat_id=chat_id)
+    return cfg.mana_daily_bonus
+
+
+async def award_invite(user_id: int, chat_id: int) -> int:
+    cfg = get_config()
+    if cfg.mana_invite_bonus <= 0:
+        return 0
+    await add_mana(user_id, cfg.mana_invite_bonus, "invite", chat_id=chat_id)
+    return cfg.mana_invite_bonus
+
+
+async def award_rank_up(user_id: int, chat_id: int, new_rank: str) -> int:
+    """Grant the one-off bonus for reaching `new_rank`. Returns granted amount."""
+    bonus = RANK_UP_BONUS.get(new_rank, 0)
+    if bonus > 0:
+        await add_mana(user_id, bonus, "rank_up", ref_id=new_rank, chat_id=chat_id)
+    return bonus
+
+
+async def transfer_mana(
+    from_id: int, to_id: int, amount: int, chat_id: int = 0
+) -> tuple[bool, int, Optional[str]]:
+    """
+    Transfer mana between players. A small fee is burned to the treasury
+    (deflation). Returns (ok, fee_burned, error_message).
+    """
+    if from_id == to_id:
+        return False, 0, "Нельзя перевести руду самому себе."
+    if amount <= 0:
+        return False, 0, "Сумма должна быть больше нуля."
+
+    cfg = get_config()
+    fee = amount * cfg.mana_transfer_fee_pct // 100
+    total = amount + fee
+
+    new_bal = await spend_mana(from_id, total, "transfer_out", ref_id=str(to_id), chat_id=chat_id)
+    if new_bal is None:
+        return False, 0, "Недостаточно руды (учти комиссию казны)."
+
+    await add_mana(to_id, amount, "transfer_in", ref_id=str(from_id), chat_id=chat_id)
+    return True, fee, None
+
+
+async def balance_of(user_id: int) -> int:
+    return await get_wallet_balance(user_id)
+
+
+async def wallet_of(user_id: int) -> dict:
+    return await get_wallet(user_id)

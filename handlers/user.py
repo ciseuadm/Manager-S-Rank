@@ -12,12 +12,13 @@ from database import (
     get_top_inviters, update_user_rank,
 )
 from keyboards import invite_keyboard
+from services import award_daily
 from utils import (
     calculate_rank, get_rank_label, get_rank_title,
     messages_to_next_rank, rank_progress_bar,
     mention_html, WELCOME_DEFAULT, HELP_MSG, START_MSG, BOTFATHER_COMMANDS,
     INVITE_MSG, DAILY_MSG, DAILY_DONE_MSG, RULES_DEFAULT, INVITE_JOIN_MSG,
-    RANK_UP_MSG,
+    RANK_UP_MSG, format_mana,
 )
 
 router = Router()
@@ -235,13 +236,20 @@ async def cmd_daily(message: Message) -> None:
 
     await _sync_rank(message, user.id, message.chat.id, total)
     rank = calculate_rank(total)
+    mana_line = ""
+    try:
+        mana_bonus = await award_daily(user.id, message.chat.id)
+        if mana_bonus:
+            mana_line = f"\n⛏ Добыто: <b>{format_mana(mana_bonus)}</b>"
+    except Exception:
+        pass
     await message.answer(
         DAILY_MSG.format(
             mention=mention_html(user),
             bonus=DAILY_BONUS,
             total=total,
             rank_label=get_rank_label(rank),
-        ),
+        ) + mana_line,
         parse_mode="HTML",
     )
 
