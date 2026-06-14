@@ -22,9 +22,11 @@ from config import load_config
 from database import init_db, close_db
 from handlers import (
     moderation_router, admin_router, user_router, settings_router,
-    owner_router, economy_router, referral_router, payments_router, set_bot_id,
+    owner_router, economy_router, referral_router, payments_router,
+    ads_router, set_bot_id,
 )
 from middlewares import ThrottleMiddleware
+from scheduler import setup_scheduler
 from utils import set_owner_id, set_config
 
 
@@ -157,8 +159,13 @@ async def on_startup(bot: Bot, config) -> None:
             logger.warning(f"Log channel error: {e}")
 
 
-async def on_shutdown(bot: Bot) -> None:
+async def on_shutdown(bot: Bot, scheduler=None) -> None:
     logger.info("Bot shutting down...")
+    if scheduler is not None:
+        try:
+            scheduler.shutdown(wait=False)
+        except Exception:
+            pass
     await close_db()
 
 
@@ -192,6 +199,7 @@ async def main() -> None:
 
     # Routers — order matters: moderation last so admin commands take priority
     dp.include_router(owner_router)
+    dp.include_router(ads_router)
     dp.include_router(admin_router)
     dp.include_router(user_router)
     dp.include_router(settings_router)
@@ -202,11 +210,14 @@ async def main() -> None:
 
     dp.errors.register(on_error)
 
+    scheduler = setup_scheduler(bot, config)
+
     async def _startup() -> None:
         await on_startup(bot, config)
+        scheduler.start()
 
     async def _shutdown() -> None:
-        await on_shutdown(bot)
+        await on_shutdown(bot, scheduler)
 
     dp.startup.register(_startup)
     dp.shutdown.register(_shutdown)

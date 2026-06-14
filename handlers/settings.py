@@ -203,3 +203,39 @@ async def cmd_setrules(message: Message, bot: Bot) -> None:
         return
     await update_chat_setting(message.chat.id, "rules", args[1])
     await message.answer("✅ Правила чата обновлены. Участники увидят их через /rules.")
+
+
+# ── /ads on|off — управление рекламой в чате (админ) ─────────────────────────
+
+@router.message(Command("ads"), F.chat.type.in_({"group", "supergroup"}))
+async def cmd_chat_ads(message: Message, bot: Bot) -> None:
+    settings = await get_chat_settings(message.chat.id)
+    current = settings.get("ads_enabled", 1)
+    args = (message.text or "").split()
+
+    if len(args) < 2:
+        state = "включена ✅" if current else "выключена ❌"
+        await message.reply(
+            f"📢 <b>Реклама в этом чате:</b> {state}\n\n"
+            f"Бот бесплатный — раз в день он может показывать один рекламный пост, "
+            f"это окупает сервер. Спам исключён (максимум 1/день).\n\n"
+            f"Админ может переключить: <code>/ads on</code> или <code>/ads off</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    if not await _check_admin(message, bot):
+        return
+    val = args[1].lower()
+    if val in ("on", "вкл", "1"):
+        await update_chat_setting(message.chat.id, "ads_enabled", 1)
+        await message.answer("✅ Реклама включена. Спасибо, что поддерживаешь проект!")
+    elif val in ("off", "выкл", "0"):
+        await update_chat_setting(message.chat.id, "ads_enabled", 0)
+        await message.answer(
+            "❌ Реклама отключена в этом чате.\n"
+            "<i>Бесплатный хостинг держится на показах — по возможности оставь рекламу включённой 🙏</i>",
+            parse_mode="HTML",
+        )
+    else:
+        await message.reply("Использование: <code>/ads on</code> или <code>/ads off</code>", parse_mode="HTML")

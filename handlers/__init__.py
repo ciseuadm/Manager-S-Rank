@@ -6,9 +6,10 @@ from .owner import router as owner_router
 from .economy import router as economy_router
 from .referral import router as referral_router
 from .payments import router as payments_router
+from .ads import router as ads_router
 
 __all__ = [
     "moderation_router", "admin_router", "user_router", "settings_router",
     "owner_router", "economy_router", "referral_router", "payments_router",
-    "set_bot_id",
+    "ads_router", "set_bot_id",
 ]
