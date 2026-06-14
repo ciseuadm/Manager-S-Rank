@@ -86,6 +86,30 @@ def invite_keyboard(link: str, share_text: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def shop_keyboard(is_vip: bool = False) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="💎 Купить руду за ⭐", callback_data="shop:buy"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🎁 Обменять на подарки", callback_data="shop:gifts"),
+        InlineKeyboardButton(text="👑 Telegram Premium", callback_data="shop:premium"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="📢 Реклама за руду", callback_data="shop:ads"),
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="👑 VIP-зал" + (" ✅" if is_vip else ""),
+            callback_data="shop:vip",
+        ),
+    )
+    builder.row(
+        InlineKeyboardButton(text="✖ Закрыть", callback_data="shop:close"),
+    )
+    return builder.as_markup()
+
+
 def owner_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(

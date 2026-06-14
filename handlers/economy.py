@@ -4,13 +4,16 @@ The /shop lives here too but exchange-to-gifts is gated as "coming soon".
 """
 from aiogram import Router, F, Bot
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
 
 from database import get_top_mana, get_or_create_user
 from services.economy import wallet_of, transfer_mana, balance_of
+from services import vip_status
+from keyboards import shop_keyboard
 from utils import (
     mention_html, mention_html_raw, format_mana, get_config,
     WALLET_MSG, TRANSFER_OK_MSG, TRANSFER_HELP, MANA_TOP_MSG,
+    SHOP_MSG, COMING_SOON_MSG, VIP_PROGRESS_MSG, VIP_OPEN_MSG,
 )
 
 router = Router()
@@ -90,6 +93,63 @@ async def cmd_transfer(message: Message) -> None:
 
 
 # ── /manatop ─────────────────────────────────────────────────────────────────
+
+# ── /shop — рынок гильдии ────────────────────────────────────────────────────
+
+@router.message(Command("shop", "market"))
+async def cmd_shop(message: Message) -> None:
+    user = message.from_user
+    if not user:
+        return
+    balance = await balance_of(user.id)
+    _, _, is_vip = await vip_status(user.id)
+    await message.answer(
+        SHOP_MSG.format(balance=format_mana(balance)),
+        parse_mode="HTML",
+        reply_markup=shop_keyboard(is_vip),
+    )
+
+
+@router.callback_query(F.data.startswith("shop:"))
+async def cb_shop(call: CallbackQuery) -> None:
+    action = call.data.split(":")[1]
+    cfg = get_config()
+
+    if action == "close":
+        try:
+            await call.message.delete()
+        except Exception:
+            pass
+        await call.answer()
+        return
+
+    if action == "buy":
+        await call.message.answer(
+            "💎 Открой бота в ЛС и отправь <b>/buy</b>, чтобы пополнить руду за Telegram Stars ⭐.",
+            parse_mode="HTML",
+        )
+        await call.answer()
+        return
+
+    if action in ("gifts", "premium", "ads"):
+        await call.answer()
+        await call.message.answer(COMING_SOON_MSG, parse_mode="HTML")
+        return
+
+    if action == "vip":
+        count, threshold, is_vip = await vip_status(call.from_user.id)
+        if is_vip and cfg.vip_chat_link:
+            text = VIP_OPEN_MSG.format(count=count, link=cfg.vip_chat_link)
+        else:
+            text = VIP_PROGRESS_MSG.format(
+                threshold=threshold, count=count, left=max(0, threshold - count)
+            )
+        await call.answer()
+        await call.message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
+        return
+
+    await call.answer()
+
 
 @router.message(Command("manatop", "richest"))
 async def cmd_manatop(message: Message, bot: Bot) -> None:

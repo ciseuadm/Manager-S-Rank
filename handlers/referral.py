@@ -15,6 +15,7 @@ from services import vip_status
 from utils import (
     require_admin, get_config, format_mana,
     MYREF_MSG, MYREF_VIP_MSG, SETGOAL_HELP, GOALS_LIST_MSG,
+    VIP_PROGRESS_MSG, VIP_OPEN_MSG,
 )
 
 router = Router()
@@ -47,6 +48,24 @@ async def cmd_myref(message: Message) -> None:
             bot_count=count,
             to_vip=max(0, threshold - count),
             bonus=format_mana(cfg.mana_invite_bonus),
+        )
+    await message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
+
+
+# ── /vip ─────────────────────────────────────────────────────────────────────
+
+@router.message(Command("vip"))
+async def cmd_vip(message: Message) -> None:
+    user = message.from_user
+    if not user:
+        return
+    cfg = get_config()
+    count, threshold, is_vip = await vip_status(user.id)
+    if is_vip and cfg.vip_chat_link:
+        text = VIP_OPEN_MSG.format(count=count, link=cfg.vip_chat_link)
+    else:
+        text = VIP_PROGRESS_MSG.format(
+            threshold=threshold, count=count, left=max(0, threshold - count)
         )
     await message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
 

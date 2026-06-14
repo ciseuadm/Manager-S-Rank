@@ -9,6 +9,7 @@ from .texts import (
     RULES_DEFAULT, INVITE_JOIN_MSG,
     WALLET_MSG, MANA_RANK_UP_MSG, TRANSFER_OK_MSG, TRANSFER_HELP, MANA_TOP_MSG,
     MYREF_MSG, MYREF_VIP_MSG, SETGOAL_HELP, GOALS_LIST_MSG,
+    SHOP_MSG, COMING_SOON_MSG, VIP_PROGRESS_MSG, VIP_OPEN_MSG,
 )
 from .helpers import (
     mention_html, mention_html_raw, parse_time_arg, get_target_user,
@@ -26,6 +27,7 @@ __all__ = [
     "DAILY_DONE_MSG", "RULES_DEFAULT", "INVITE_JOIN_MSG",
     "WALLET_MSG", "MANA_RANK_UP_MSG", "TRANSFER_OK_MSG", "TRANSFER_HELP",
     "MANA_TOP_MSG", "MYREF_MSG", "MYREF_VIP_MSG", "SETGOAL_HELP", "GOALS_LIST_MSG",
+    "SHOP_MSG", "COMING_SOON_MSG", "VIP_PROGRESS_MSG", "VIP_OPEN_MSG",
     "mention_html", "mention_html_raw", "parse_time_arg", "get_target_user",
     "set_owner_id", "get_owner_id", "is_owner", "is_chat_admin", "is_chat_staff",
     "require_admin", "set_config", "get_config",
