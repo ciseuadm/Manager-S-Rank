@@ -11,25 +11,23 @@ from database import (
     add_blacklist_word, remove_blacklist_word, get_blacklist_words,
 )
 from keyboards import settings_keyboard
-from utils import SETTINGS_MSG, is_owner
+from utils import SETTINGS_MSG, is_chat_admin, require_admin
 
 router = Router()
 
 
-def _is_admin(status: str) -> bool:
-    return status in ("administrator", "creator")
-
-
 async def _check_admin(message: Message, bot: Bot) -> bool:
-    if not message.from_user:
+    return await require_admin(message, bot)
+
+
+async def _cb_admin_guard(call: CallbackQuery, bot: Bot) -> bool:
+    """Block non-admins from touching settings buttons."""
+    if not call.message or not call.from_user:
         return False
-    if is_owner(message.from_user.id):
+    if await is_chat_admin(bot, call.message.chat.id, call.from_user.id):
         return True
-    member = await bot.get_chat_member(message.chat.id, message.from_user.id)
-    if not _is_admin(member.status):
-        await message.reply("❌ Только администраторы могут изменять настройки.")
-        return False
-    return True
+    await call.answer("❌ Только администраторы.", show_alert=True)
+    return False
 
 
 # ── /settings ─────────────────────────────────────────────────────────────────
@@ -50,15 +48,9 @@ async def cmd_settings(message: Message, bot: Bot) -> None:
 
 @router.callback_query(F.data.startswith("toggle:"))
 async def cb_toggle(call: CallbackQuery, bot: Bot) -> None:
-    key = call.data.split(":")[1]
-    if not call.message or not call.from_user:
+    if not await _cb_admin_guard(call, bot):
         return
-
-    if not is_owner(call.from_user.id):
-        member = await bot.get_chat_member(call.message.chat.id, call.from_user.id)
-        if not _is_admin(member.status):
-            await call.answer("❌ Только администраторы.", show_alert=True)
-            return
+    key = call.data.split(":")[1]
 
     settings = await get_chat_settings(call.message.chat.id)
     new_val = 0 if settings.get(key, 0) else 1
@@ -70,6 +62,51 @@ async def cb_toggle(call: CallbackQuery, bot: Bot) -> None:
         await call.answer("✅ Настройка обновлена")
     except Exception:
         await call.answer("✅ Обновлено")
+
+
+# ── Numeric/value settings (warn limit, mute time, welcome) ─────────────────────
+
+_WARN_LIMIT_CYCLE = [3, 4, 5, 7, 10]
+_MUTE_TIME_CYCLE = [30, 60, 120, 360, 1440]
+
+
+def _next_in_cycle(cycle: list[int], current: int) -> int:
+    if current in cycle:
+        return cycle[(cycle.index(current) + 1) % len(cycle)]
+    return cycle[0]
+
+
+@router.callback_query(F.data.startswith("set:"))
+async def cb_set_value(call: CallbackQuery, bot: Bot) -> None:
+    if not await _cb_admin_guard(call, bot):
+        return
+    key = call.data.split(":")[1]
+    settings = await get_chat_settings(call.message.chat.id)
+
+    if key == "warn_limit":
+        new_val = _next_in_cycle(_WARN_LIMIT_CYCLE, settings.get("warn_limit", 3))
+        await update_chat_setting(call.message.chat.id, "warn_limit", new_val)
+        await call.answer(f"⚠️ Лимит варнов: {new_val} (бан при {new_val + 2})")
+    elif key == "mute_time":
+        new_val = _next_in_cycle(_MUTE_TIME_CYCLE, settings.get("mute_time", 60))
+        await update_chat_setting(call.message.chat.id, "mute_time", new_val)
+        label = f"{new_val // 60} ч" if new_val >= 60 else f"{new_val} мин"
+        await call.answer(f"🔇 Время мута: {label}")
+    elif key == "welcome_msg":
+        await call.answer(
+            "📝 Измени приветствие командой:\n/setwelcome <текст>",
+            show_alert=True,
+        )
+        return
+    else:
+        await call.answer()
+        return
+
+    settings = await get_chat_settings(call.message.chat.id)
+    try:
+        await call.message.edit_reply_markup(reply_markup=settings_keyboard(settings))
+    except Exception:
+        pass
 
 
 @router.callback_query(F.data == "settings:refresh")
@@ -150,6 +187,19 @@ async def cmd_setwelcome(message: Message, bot: Bot) -> None:
         )
         return
     text = args[1]
-    from database import update_chat_setting
     await update_chat_setting(message.chat.id, "welcome_msg", text)
     await message.answer("✅ Приветственное сообщение обновлено.")
+
+
+# ── /setrules ──────────────────────────────────────────────────────────────────
+
+@router.message(Command("setrules"), F.chat.type.in_({"group", "supergroup"}))
+async def cmd_setrules(message: Message, bot: Bot) -> None:
+    if not await _check_admin(message, bot):
+        return
+    args = (message.text or "").split(maxsplit=1)
+    if len(args) < 2:
+        await message.reply("✏️ Использование: /setrules <текст правил>")
+        return
+    await update_chat_setting(message.chat.id, "rules", args[1])
+    await message.answer("✅ Правила чата обновлены. Участники увидят их через /rules.")

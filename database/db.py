@@ -21,6 +21,9 @@ async def init_db(db_path: str) -> None:
     await _db.execute("PRAGMA journal_mode=WAL")
     await _db.execute("PRAGMA foreign_keys=ON")
     await _create_tables()
+    await _migrate()
+    from .migrations import run_migrations
+    await run_migrations(_db)
     logger.info(f"Database initialized at {db_path}")
 
 
@@ -106,4 +109,26 @@ async def _create_tables() -> None:
             PRIMARY KEY (chat_id, date)
         );
     """)
+    await db.commit()
+
+
+async def _migrate() -> None:
+    """Add columns introduced after the first release. Safe to run repeatedly."""
+    db = await get_db()
+    new_columns = {
+        "users": {
+            "last_daily": "TEXT",
+            "invited_count": "INTEGER DEFAULT 0",
+        },
+        "chat_settings": {
+            "rules": "TEXT DEFAULT ''",
+        },
+    }
+    for table, columns in new_columns.items():
+        async with db.execute(f"PRAGMA table_info({table})") as cur:
+            existing = {row["name"] for row in await cur.fetchall()}
+        for name, ddl in columns.items():
+            if name not in existing:
+                await db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+                logger.info(f"DB migrate: {table}.{name} added")
     await db.commit()

@@ -81,6 +81,81 @@ async def increment_messages(user_id: int, chat_id: int) -> int:
     return row["messages"] if row else 0
 
 
+async def add_messages(user_id: int, chat_id: int, amount: int) -> int:
+    """Add a bonus amount to the message counter (used by /daily, invites)."""
+    db = await get_db()
+    await db.execute(
+        """UPDATE users
+           SET messages = messages + ?, last_seen = datetime('now')
+           WHERE user_id = ? AND chat_id = ?""",
+        (amount, user_id, chat_id),
+    )
+    await db.commit()
+    async with db.execute(
+        "SELECT messages FROM users WHERE user_id = ? AND chat_id = ?", (user_id, chat_id)
+    ) as cur:
+        row = await cur.fetchone()
+    return row["messages"] if row else 0
+
+
+async def claim_daily(user_id: int, chat_id: int, bonus: int) -> Optional[int]:
+    """
+    Grant the daily bonus once per UTC day.
+    Returns the new message total, or None if already claimed today.
+    """
+    today = datetime.utcnow().date().isoformat()
+    db = await get_db()
+    async with db.execute(
+        "SELECT last_daily FROM users WHERE user_id = ? AND chat_id = ?", (user_id, chat_id)
+    ) as cur:
+        row = await cur.fetchone()
+    if row and row["last_daily"] == today:
+        return None
+    await db.execute(
+        """UPDATE users
+           SET messages = messages + ?, last_daily = ?, last_seen = datetime('now')
+           WHERE user_id = ? AND chat_id = ?""",
+        (bonus, today, user_id, chat_id),
+    )
+    await db.commit()
+    async with db.execute(
+        "SELECT messages FROM users WHERE user_id = ? AND chat_id = ?", (user_id, chat_id)
+    ) as cur:
+        row = await cur.fetchone()
+    return row["messages"] if row else 0
+
+
+async def credit_invite(inviter_id: int, chat_id: int, bonus: int) -> int:
+    """Reward a member for bringing a new user. Returns their invite total."""
+    db = await get_db()
+    await db.execute(
+        """UPDATE users
+           SET invited_count = invited_count + 1, messages = messages + ?
+           WHERE user_id = ? AND chat_id = ?""",
+        (bonus, inviter_id, chat_id),
+    )
+    await db.commit()
+    async with db.execute(
+        "SELECT invited_count FROM users WHERE user_id = ? AND chat_id = ?",
+        (inviter_id, chat_id),
+    ) as cur:
+        row = await cur.fetchone()
+    return row["invited_count"] if row else 0
+
+
+async def get_top_inviters(chat_id: int, limit: int = 10) -> list[dict]:
+    db = await get_db()
+    async with db.execute(
+        """SELECT user_id, username, full_name, invited_count
+           FROM users
+           WHERE chat_id = ? AND invited_count > 0 AND is_banned = 0
+           ORDER BY invited_count DESC LIMIT ?""",
+        (chat_id, limit),
+    ) as cur:
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
 async def update_user_rank(user_id: int, chat_id: int, rank: str) -> None:
     db = await get_db()
     await db.execute(
@@ -273,10 +348,17 @@ async def get_chat_stats(chat_id: int, days: int = 7) -> list[dict]:
 async def get_all_chats() -> list[dict]:
     db = await get_db()
     async with db.execute(
-        "SELECT chat_id, title FROM chat_settings ORDER BY created_at DESC"
+        "SELECT chat_id, title, ads_enabled FROM chat_settings ORDER BY created_at DESC"
     ) as cur:
         rows = await cur.fetchall()
     return [dict(r) for r in rows]
+
+
+async def remove_chat(chat_id: int) -> None:
+    """Drop a chat the bot was kicked/removed from (keeps the DB clean)."""
+    db = await get_db()
+    await db.execute("DELETE FROM chat_settings WHERE chat_id = ?", (chat_id,))
+    await db.commit()
 
 
 async def get_global_stats() -> dict:

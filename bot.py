@@ -10,7 +10,11 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import BotCommand, BotCommandScopeDefault, ErrorEvent
+from aiogram.types import (
+    BotCommand, BotCommandScopeDefault, BotCommandScopeAllPrivateChats,
+    BotCommandScopeAllGroupChats, BotCommandScopeAllChatAdministrators,
+    BotCommandScopeChat, ErrorEvent,
+)
 from aiogram.exceptions import TelegramRetryAfter
 from loguru import logger
 
@@ -21,7 +25,7 @@ from handlers import (
     owner_router, set_bot_id,
 )
 from middlewares import ThrottleMiddleware
-from utils import set_owner_id
+from utils import set_owner_id, set_config
 
 
 # ── Logging ────────────────────────────────────────────────────────────────────
@@ -55,29 +59,88 @@ BANNER = r"""
 """
 
 
-BOT_COMMANDS = [
-    BotCommand(command="start", description="Главное меню бота"),
-    BotCommand(command="help", description="Полный список команд"),
-    BotCommand(command="rank", description="Моя карточка охотника"),
-    BotCommand(command="top", description="Топ охотников чата"),
-    BotCommand(command="info", description="Инфо о пользователе"),
-    BotCommand(command="stats", description="Статистика чата"),
-    BotCommand(command="warn", description="Предупредить (админ)"),
-    BotCommand(command="mute", description="Заглушить (админ)"),
-    BotCommand(command="ban", description="Забанить (админ)"),
-    BotCommand(command="kick", description="Выгнать (админ)"),
-    BotCommand(command="settings", description="Настройки чата (админ)"),
-    BotCommand(command="ping", description="Проверить работу бота"),
-    BotCommand(command="id", description="Узнать свой ID"),
+# Commands visible to every member (no moderation/settings here).
+PUBLIC_COMMANDS = [
+    BotCommand(command="rank", description="🏆 Моя карточка охотника"),
+    BotCommand(command="top", description="📊 Топ охотников чата"),
+    BotCommand(command="invites", description="👥 Топ по приглашениям"),
+    BotCommand(command="daily", description="🎁 Ежедневный бонус"),
+    BotCommand(command="invite", description="⚔️ Пригласить друзей"),
+    BotCommand(command="info", description="ℹ️ Инфо о пользователе"),
+    BotCommand(command="stats", description="📈 Статистика чата"),
+    BotCommand(command="rules", description="📜 Правила чата"),
+    BotCommand(command="help", description="📋 Список команд"),
+    BotCommand(command="ping", description="⚡ Проверить бота"),
+    BotCommand(command="id", description="🆔 Узнать свой ID"),
 ]
+
+# Commands shown only in private chat with the bot.
+PRIVATE_COMMANDS = [
+    BotCommand(command="start", description="⚡ Главное меню бота"),
+    BotCommand(command="help", description="📋 Список команд"),
+    BotCommand(command="ping", description="⚡ Проверить бота"),
+    BotCommand(command="id", description="🆔 Узнать свой ID"),
+]
+
+# Admin-only management commands (appended to the public list for admins).
+ADMIN_ONLY_COMMANDS = [
+    BotCommand(command="warn", description="⚠️ Предупредить"),
+    BotCommand(command="unwarn", description="✅ Снять предупреждение"),
+    BotCommand(command="warns", description="📋 Предупреждения"),
+    BotCommand(command="mute", description="🔇 Заглушить"),
+    BotCommand(command="unmute", description="🔊 Размутить"),
+    BotCommand(command="ban", description="🚫 Забанить"),
+    BotCommand(command="unban", description="♻️ Разбанить"),
+    BotCommand(command="kick", description="👟 Выгнать"),
+    BotCommand(command="del", description="🗑 Удалить сообщение"),
+    BotCommand(command="settings", description="⚙️ Настройки чата"),
+    BotCommand(command="addword", description="➕ Слово в чёрный список"),
+    BotCommand(command="rmword", description="➖ Убрать слово"),
+    BotCommand(command="words", description="📋 Чёрный список"),
+    BotCommand(command="setwelcome", description="📝 Изменить приветствие"),
+    BotCommand(command="setrules", description="📜 Изменить правила"),
+]
+
+# Admins see public + management commands.
+ADMIN_COMMANDS = PUBLIC_COMMANDS + ADMIN_ONLY_COMMANDS
+
+# Owner gets the control panel commands in their private chat.
+OWNER_COMMANDS = PRIVATE_COMMANDS + [
+    BotCommand(command="owner", description="👑 Панель владельца"),
+    BotCommand(command="gstats", description="📊 Глобальная статистика"),
+    BotCommand(command="chats", description="💬 Список чатов"),
+    BotCommand(command="broadcast", description="📢 Рассылка"),
+]
+
+
+async def setup_commands(bot: Bot, owner_id: int) -> None:
+    """
+    Register commands per scope so the "/" menu only shows admin/management
+    commands to administrators — regular members never see them.
+    """
+    await bot.set_my_commands(PUBLIC_COMMANDS, scope=BotCommandScopeDefault())
+    await bot.set_my_commands(PRIVATE_COMMANDS, scope=BotCommandScopeAllPrivateChats())
+    await bot.set_my_commands(PUBLIC_COMMANDS, scope=BotCommandScopeAllGroupChats())
+    await bot.set_my_commands(
+        ADMIN_COMMANDS, scope=BotCommandScopeAllChatAdministrators()
+    )
+    if owner_id:
+        try:
+            await bot.set_my_commands(
+                OWNER_COMMANDS, scope=BotCommandScopeChat(chat_id=owner_id)
+            )
+        except Exception as e:
+            logger.warning(f"owner commands scope error: {e}")
 
 
 async def on_startup(bot: Bot, config) -> None:
     me = await bot.get_me()
     set_bot_id(me.id)
     set_owner_id(config.owner_id)
+    config.bot_username = me.username or ""
+    set_config(config)
     try:
-        await bot.set_my_commands(BOT_COMMANDS, scope=BotCommandScopeDefault())
+        await setup_commands(bot, config.owner_id)
     except Exception as e:
         logger.warning(f"set_my_commands error: {e}")
     logger.info(f"Bot started: @{me.username} (ID: {me.id}) | Owner: {config.owner_id}")

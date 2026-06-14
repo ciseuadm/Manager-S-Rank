@@ -12,7 +12,7 @@ from database import (
     get_warn_history, mute_user, unmute_user, ban_user, unban_user,
     get_chat_settings,
 )
-from utils import mention_html, parse_time_arg, get_target_user, is_owner, WARN_MSG
+from utils import parse_time_arg, require_admin, WARN_MSG
 
 router = Router()
 
@@ -22,15 +22,7 @@ def _is_admin_status(status: str) -> bool:
 
 
 async def _check_admin(message: Message, bot: Bot) -> bool:
-    if not message.from_user:
-        return False
-    if is_owner(message.from_user.id):
-        return True
-    member = await bot.get_chat_member(message.chat.id, message.from_user.id)
-    if not _is_admin_status(member.status):
-        await message.reply("❌ У тебя нет прав для этой команды.")
-        return False
-    return True
+    return await require_admin(message, bot)
 
 
 async def _resolve_target(message: Message) -> tuple[int, str] | None:

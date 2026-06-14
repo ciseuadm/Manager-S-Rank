@@ -3,8 +3,6 @@ Owner-only control panel for the bot creator (@nonright).
 Commands: /owner /panel /gstats /chats /broadcast /leavechat
 Works in private chat with the bot.
 """
-import asyncio
-
 from aiogram import Router, F, Bot
 from aiogram.filters import Command, BaseFilter
 from aiogram.types import Message, CallbackQuery
@@ -12,6 +10,7 @@ from loguru import logger
 
 from database import get_all_chats, get_global_stats
 from keyboards import owner_keyboard
+from services import broadcast
 from utils import is_owner
 
 router = Router()
@@ -118,26 +117,31 @@ async def cmd_broadcast(message: Message, bot: Bot) -> None:
         await message.answer("💬 Нет чатов для рассылки.")
         return
 
-    sent = 0
-    failed = 0
     status = await message.answer(f"📢 Рассылка в {len(chats)} чат(ов)…")
-    for c in chats:
-        cid = c["chat_id"]
+
+    async def _send(b: Bot, cid: int) -> None:
+        if reply:
+            await reply.copy_to(cid)
+        else:
+            await b.send_message(cid, text, parse_mode="HTML")
+
+    async def _progress(sent: int, failed: int, removed: int) -> None:
         try:
-            if reply:
-                await reply.copy_to(cid)
-            else:
-                await bot.send_message(cid, text, parse_mode="HTML")
-            sent += 1
-        except Exception as e:
-            failed += 1
-            logger.warning(f"[BROADCAST] {cid} failed: {e}")
-        await asyncio.sleep(0.05)  # анти-флуд лимит Telegram
+            await status.edit_text(
+                f"📢 Рассылка… доставлено {sent}, ошибок {failed}."
+            )
+        except Exception:
+            pass
+
+    result = await broadcast(
+        bot, [c["chat_id"] for c in chats], _send, on_progress=_progress
+    )
 
     await status.edit_text(
         f"✅ <b>Рассылка завершена</b>\n\n"
-        f"Доставлено: <b>{sent}</b>\n"
-        f"Ошибок: <b>{failed}</b>",
+        f"Доставлено: <b>{result['sent']}</b>\n"
+        f"Ошибок: <b>{result['failed']}</b>\n"
+        f"Удалено мёртвых чатов: <b>{result['removed']}</b>",
         parse_mode="HTML",
     )
 

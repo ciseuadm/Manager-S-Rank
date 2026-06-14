@@ -1,9 +1,13 @@
+import asyncio
+
+from aiogram import Bot
 from aiogram.types import Message, User
 
 
 # ── Owner state (set once on startup) ───────────────────────────────────────────
 
 _OWNER_ID: int = 0
+_CONFIG = None  # set once on startup, type: config.Config
 
 
 def set_owner_id(owner_id: int) -> None:
@@ -13,6 +17,19 @@ def set_owner_id(owner_id: int) -> None:
 
 def get_owner_id() -> int:
     return _OWNER_ID
+
+
+def set_config(config) -> None:
+    """Store the loaded Config so services/handlers can read it without imports."""
+    global _CONFIG
+    _CONFIG = config
+
+
+def get_config():
+    """Return the global Config. Raises if accessed before startup."""
+    if _CONFIG is None:
+        raise RuntimeError("Config not initialised. Call set_config() on startup.")
+    return _CONFIG
 
 
 def is_owner(user_id: int | None) -> bool:
@@ -65,3 +82,44 @@ async def get_target_user(message: Message) -> tuple[int, str] | None:
 
 def is_admin_permission(status: str) -> bool:
     return status in ("administrator", "creator")
+
+
+# ── Admin guards ────────────────────────────────────────────────────────────────
+
+async def is_chat_admin(bot: Bot, chat_id: int, user_id: int | None) -> bool:
+    """Owner is always admin. Otherwise checks Telegram chat status."""
+    if is_owner(user_id):
+        return True
+    if not user_id:
+        return False
+    try:
+        member = await bot.get_chat_member(chat_id, user_id)
+    except Exception:
+        return False
+    return member.status in ("administrator", "creator")
+
+
+async def require_admin(message: Message, bot: Bot, *, silent: bool = False) -> bool:
+    """
+    Gatekeeper for admin-only commands.
+    Returns True for owner/admins. For everyone else it removes the command
+    message (so the chat stays clean) and, unless `silent`, shows a short
+    self-destructing notice instead of leaving permanent "no rights" spam.
+    """
+    user = message.from_user
+    if user and await is_chat_admin(bot, message.chat.id, user.id):
+        return True
+    try:
+        await message.delete()
+    except Exception:
+        pass
+    if not silent:
+        try:
+            notice = await message.answer(
+                "🔒 Эта команда доступна только администраторам."
+            )
+            await asyncio.sleep(4)
+            await notice.delete()
+        except Exception:
+            pass
+    return False

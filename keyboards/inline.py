@@ -1,3 +1,5 @@
+from urllib.parse import quote
+
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -47,9 +49,16 @@ def settings_keyboard(settings: dict) -> InlineKeyboardMarkup:
             callback_data="toggle:filter_caps",
         ),
     )
+    warn_limit = settings.get("warn_limit", 3)
+    mute_time = settings.get("mute_time", 60)
+    mute_label = f"{mute_time // 60}ч" if mute_time >= 60 else f"{mute_time}м"
     builder.row(
-        InlineKeyboardButton(text="⚠️ Лимит варнов", callback_data="set:warn_limit"),
-        InlineKeyboardButton(text="🔇 Время мута", callback_data="set:mute_time"),
+        InlineKeyboardButton(
+            text=f"⚠️ Варны: {warn_limit}", callback_data="set:warn_limit"
+        ),
+        InlineKeyboardButton(
+            text=f"🔇 Мут: {mute_label}", callback_data="set:mute_time"
+        ),
     )
     builder.row(
         InlineKeyboardButton(text="📝 Приветствие", callback_data="set:welcome_msg"),
@@ -57,6 +66,22 @@ def settings_keyboard(settings: dict) -> InlineKeyboardMarkup:
     builder.row(
         InlineKeyboardButton(text="🔄 Обновить", callback_data="settings:refresh"),
         InlineKeyboardButton(text="✖ Закрыть", callback_data="settings:close"),
+    )
+    return builder.as_markup()
+
+
+def invite_keyboard(link: str, share_text: str) -> InlineKeyboardMarkup:
+    """A 'share to friends' button — the core viral/marketing hook."""
+    builder = InlineKeyboardBuilder()
+    share_url = (
+        f"https://t.me/share/url?url={quote(link, safe='')}"
+        f"&text={quote(share_text, safe='')}"
+    )
+    builder.row(
+        InlineKeyboardButton(text="📣 Позвать друзей", url=share_url),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔗 Открыть чат", url=link),
     )
     return builder.as_markup()
 
