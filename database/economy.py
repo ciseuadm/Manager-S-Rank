@@ -74,6 +74,27 @@ async def spend_mana(user_id: int, amount: int, reason: str,
     return await get_wallet_balance(user_id)
 
 
+async def revert_mana(user_id: int, amount: int, reason: str,
+                      ref_id: str = "", chat_id: int = 0) -> int:
+    """
+    Откат начисления (clawback при отписке от канала задания). Списывает руду,
+    но НЕ уводит баланс в минус (если уже потрачена). Возвращает новый баланс.
+    """
+    if amount <= 0:
+        return await get_wallet_balance(user_id)
+    await get_wallet(user_id)
+    db = await get_db()
+    await db.execute(
+        """UPDATE wallets
+           SET mana = MAX(0, mana - ?), updated_at = datetime('now')
+           WHERE user_id = ?""",
+        (amount, user_id),
+    )
+    await _log_tx(db, user_id, -amount, reason, ref_id, chat_id)
+    await db.commit()
+    return await get_wallet_balance(user_id)
+
+
 async def can_reward_message(user_id: int, cooldown_seconds: int) -> bool:
     """True if enough time passed since the last per-message mana reward."""
     w = await get_wallet(user_id)

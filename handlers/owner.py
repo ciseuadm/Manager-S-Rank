@@ -14,7 +14,7 @@ from database import (
 )
 from keyboards import owner_keyboard
 from services import broadcast
-from utils import is_owner, format_mana
+from utils import is_owner, format_mana, escape_html
 
 router = Router()
 
@@ -85,7 +85,7 @@ async def _chats_text() -> str:
         return "💬 Бот пока не добавлен ни в один чат."
     lines = [f"💬 <b>ЧАТЫ БОТА</b> ({len(chats)})\n"]
     for c in chats[:50]:
-        title = c.get("title") or "—"
+        title = escape_html(c.get("title") or "—")
         lines.append(f"• <b>{title}</b>\n  <code>{c['chat_id']}</code>")
     if len(chats) > 50:
         lines.append(f"\n<i>…и ещё {len(chats) - 50}</i>")

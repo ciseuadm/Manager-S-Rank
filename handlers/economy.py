@@ -11,7 +11,7 @@ from services.economy import wallet_of, transfer_mana, balance_of
 from services import vip_status
 from keyboards import shop_keyboard
 from utils import (
-    mention_html, mention_html_raw, format_mana, get_config,
+    mention_html, mention_html_raw, escape_html, format_mana, get_config,
     WALLET_MSG, TRANSFER_OK_MSG, TRANSFER_HELP, MANA_TOP_MSG,
     SHOP_MSG, COMING_SOON_MSG, VIP_PROGRESS_MSG, VIP_OPEN_MSG,
 )
@@ -131,7 +131,16 @@ async def cb_shop(call: CallbackQuery) -> None:
         await call.answer()
         return
 
-    if action in ("gifts", "premium", "ads"):
+    if action == "gifts":
+        await call.answer()
+        await call.message.answer(
+            "🎁 Обменять руду, заработанную <b>заданиями</b>, на подарок — команда /redeem.\n"
+            "Где брать такую руду: /tasks",
+            parse_mode="HTML",
+        )
+        return
+
+    if action in ("premium", "ads"):
         await call.answer()
         await call.message.answer(COMING_SOON_MSG, parse_mode="HTML")
         return
@@ -164,7 +173,7 @@ async def cmd_manatop(message: Message, bot: Bot) -> None:
     for i, t in enumerate(top):
         try:
             chat = await bot.get_chat(t["user_id"])
-            name = chat.full_name or chat.username or str(t["user_id"])
+            name = escape_html(chat.full_name or chat.username or str(t["user_id"]))
         except Exception:
             name = str(t["user_id"])
         lines.append(

@@ -103,6 +103,60 @@ CREATE TABLE IF NOT EXISTS payments (
     status          TEXT DEFAULT 'paid',
     created_at      TEXT DEFAULT (datetime('now'))
 );
+
+-- ── Tasks (платные задания: подписки, в будущем CPA/видео) ───────────────────────
+CREATE TABLE IF NOT EXISTS tasks (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    type          TEXT DEFAULT 'channel_sub',  -- 'channel_sub' | 'cpa_link' | 'video'
+    title         TEXT,
+    channel_id    INTEGER,                      -- chat_id канала (бот обязан быть админом)
+    channel_username TEXT,                       -- @username для отображения
+    url           TEXT,                          -- ссылка для подписки/оффера
+    reward        INTEGER DEFAULT 0,             -- руда пользователю
+    revenue_cents INTEGER DEFAULT 0,             -- сколько платит рекламодатель нам (в центах) — для P&L
+    daily         INTEGER DEFAULT 0,             -- задание-«ротация»
+    active        INTEGER DEFAULT 1,
+    created_by    INTEGER,
+    created_at    TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_active ON tasks(active, type);
+
+CREATE TABLE IF NOT EXISTS task_completions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id     INTEGER,
+    user_id     INTEGER,
+    reward      INTEGER DEFAULT 0,              -- сколько начислено (для clawback)
+    status      TEXT DEFAULT 'credited',        -- 'credited' | 'reverted'
+    created_at  TEXT DEFAULT (datetime('now')),
+    checked_at  TEXT DEFAULT (datetime('now')),
+    UNIQUE(task_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_taskcomp_user ON task_completions(user_id);
+CREATE INDEX IF NOT EXISTS idx_taskcomp_status ON task_completions(status, task_id);
+
+-- ── Payout requests (обмен redeemable-руды на подарок) ───────────────────────────
+CREATE TABLE IF NOT EXISTS payout_requests (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER,
+    amount      INTEGER,                        -- списано руды (escrow)
+    product     TEXT,                           -- что выбрал пользователь
+    usd_cents   INTEGER DEFAULT 0,              -- наша себестоимость, в центах
+    status      TEXT DEFAULT 'pending',         -- 'pending' | 'approved' | 'rejected' | 'fulfilled'
+    note        TEXT,
+    created_at  TEXT DEFAULT (datetime('now')),
+    decided_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_payout_status ON payout_requests(status);
+
+-- ── Achievements (бейджи/ачивки: «первые 100 к рангу A» и т.д.) ──────────────────
+CREATE TABLE IF NOT EXISTS achievements (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER,
+    code       TEXT,
+    awarded_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(user_id, code)
+);
+CREATE INDEX IF NOT EXISTS idx_ach_code ON achievements(code);
 """
 
 
@@ -111,6 +165,13 @@ _NEW_COLUMNS = {
     "chat_settings": {
         "ads_enabled": "INTEGER DEFAULT 1",
         "ref_link": "TEXT",
+        "delete_service_msgs": "INTEGER DEFAULT 1",
+    },
+    "wallets": {
+        # Баланс единый (wallets.mana). Колонки ниже зарезервированы под будущую
+        # фазу CPA (B4): окно реверса (pending) и учёт заработка заданиями (P&L).
+        "mana_pending": "INTEGER DEFAULT 0",
+        "tasks_earned": "INTEGER DEFAULT 0",
     },
 }
 

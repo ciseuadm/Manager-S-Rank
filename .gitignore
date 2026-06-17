@@ -6,6 +6,9 @@ data/*.db
 data/*.db-shm
 data/*.db-wal
 
+# Backups (snapshots of the DB)
+backups/
+
 # Logs
 logs/*.log
 

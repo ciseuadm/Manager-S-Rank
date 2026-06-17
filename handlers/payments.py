@@ -136,7 +136,17 @@ async def cmd_donate(message: Message, bot: Bot) -> None:
 
 @router.pre_checkout_query()
 async def on_pre_checkout(query: PreCheckoutQuery) -> None:
-    await query.answer(ok=True)
+    payload = query.invoice_payload or ""
+    ok = payload == "donate" or (
+        payload.startswith("mana:")
+        and payload.split(":", 1)[1].isdigit()
+        and int(payload.split(":", 1)[1]) in _PACKS_BY_ID
+    )
+    if ok:
+        await query.answer(ok=True)
+    else:
+        logger.warning(f"[PAY] rejected pre_checkout, bad payload: {payload!r}")
+        await query.answer(ok=False, error_message="Счёт устарел. Открой /buy и повтори.")
 
 
 # ── Успешная оплата: начисляем товар ─────────────────────────────────────────

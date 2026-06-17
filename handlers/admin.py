@@ -12,7 +12,7 @@ from database import (
     get_warn_history, mute_user, unmute_user, ban_user, unban_user,
     get_chat_settings,
 )
-from utils import parse_time_arg, require_admin, WARN_MSG
+from utils import parse_time_arg, require_admin, escape_html, mention_html_raw, WARN_MSG
 
 router = Router()
 
@@ -75,7 +75,7 @@ async def cmd_warn(message: Message, bot: Bot) -> None:
     warn_limit = settings.get("warn_limit", 3)
     ban_limit = warn_limit + 2
 
-    mention = f'<a href="tg://user?id={user_id}">{name}</a>'
+    mention = mention_html_raw(user_id, name)
 
     if warns >= ban_limit:
         await bot.ban_chat_member(message.chat.id, user_id)
@@ -102,7 +102,7 @@ async def cmd_warn(message: Message, bot: Bot) -> None:
         await message.answer(
             WARN_MSG.format(
                 mention=mention,
-                reason=reason,
+                reason=escape_html(reason),
                 warns=warns,
                 limit=warn_limit,
                 extra=f"Ещё <b>{remaining}</b> предупреждений — мут!",
@@ -123,7 +123,7 @@ async def cmd_unwarn(message: Message, bot: Bot) -> None:
         return
     user_id, name = target
     warns = await remove_warn(user_id, message.chat.id)
-    mention = f'<a href="tg://user?id={user_id}">{name}</a>'
+    mention = mention_html_raw(user_id, name)
     await message.answer(
         f"✅ Одно предупреждение снято с {mention}. Осталось: <b>{warns}</b>",
         parse_mode="HTML",
@@ -144,7 +144,7 @@ async def cmd_warns(message: Message, bot: Bot) -> None:
     user_id, name = target
     db_user = await get_or_create_user(user_id, message.chat.id, full_name=name)
     history = await get_warn_history(user_id, message.chat.id)
-    mention = f'<a href="tg://user?id={user_id}">{name}</a>'
+    mention = mention_html_raw(user_id, name)
 
     text = f"📋 <b>Предупреждения</b> {mention}\n\nВсего: <b>{db_user['warns']}</b>\n\n"
     if history:
@@ -190,9 +190,9 @@ async def cmd_mute(message: Message, bot: Bot) -> None:
     )
     await mute_user(user_id, message.chat.id, minutes)
 
-    mention = f'<a href="tg://user?id={user_id}">{name}</a>'
+    mention = mention_html_raw(user_id, name)
     await message.answer(
-        f"🔇 <b>{mention}</b> заглушён на <b>{minutes} мин.</b>\n📋 Причина: {reason}",
+        f"🔇 <b>{mention}</b> заглушён на <b>{minutes} мин.</b>\n📋 Причина: {escape_html(reason)}",
         parse_mode="HTML",
     )
 
@@ -220,7 +220,7 @@ async def cmd_unmute(message: Message, bot: Bot) -> None:
     )
     await unmute_user(user_id, message.chat.id)
 
-    mention = f'<a href="tg://user?id={user_id}">{name}</a>'
+    mention = mention_html_raw(user_id, name)
     await message.answer(f"🔊 <b>{mention}</b> размучен.", parse_mode="HTML")
 
 
@@ -251,9 +251,9 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
     await bot.ban_chat_member(message.chat.id, user_id)
     await ban_user(user_id, message.chat.id, message.from_user.id, reason)
 
-    mention = f'<a href="tg://user?id={user_id}">{name}</a>'
+    mention = mention_html_raw(user_id, name)
     await message.answer(
-        f"🚫 <b>{mention}</b> забанен.\n📋 Причина: <b>{reason}</b>\n"
+        f"🚫 <b>{mention}</b> забанен.\n📋 Причина: <b>{escape_html(reason)}</b>\n"
         f"<i>Лицензия охотника отозвана системой Solo Leveling.</i>",
         parse_mode="HTML",
     )
@@ -275,7 +275,7 @@ async def cmd_unban(message: Message, bot: Bot) -> None:
     await bot.unban_chat_member(message.chat.id, user_id, only_if_banned=True)
     await unban_user(user_id, message.chat.id)
 
-    mention = f'<a href="tg://user?id={user_id}">{name}</a>'
+    mention = mention_html_raw(user_id, name)
     await message.answer(
         f"✅ <b>{mention}</b> разбанен. Лицензия охотника восстановлена.",
         parse_mode="HTML",
@@ -306,7 +306,7 @@ async def cmd_kick(message: Message, bot: Bot) -> None:
     await bot.ban_chat_member(message.chat.id, user_id)
     await bot.unban_chat_member(message.chat.id, user_id)
 
-    mention = f'<a href="tg://user?id={user_id}">{name}</a>'
+    mention = mention_html_raw(user_id, name)
     await message.answer(
         f"👟 <b>{mention}</b> выгнан из чата.",
         parse_mode="HTML",
@@ -326,4 +326,5 @@ async def cmd_del(message: Message, bot: Bot) -> None:
         await message.reply_to_message.delete()
         await message.delete()
     except Exception as e:
-        await message.reply(f"❌ Не удалось удалить: {e}")
+        logger.warning(f"[DEL] failed in {message.chat.id}: {e}")
+        await message.reply("❌ Не удалось удалить сообщение (нет прав или оно слишком старое).")

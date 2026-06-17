@@ -1,9 +1,12 @@
 """
 User-facing commands: /rank /top /stats /info /help /ping /id
 """
+import asyncio
+
+from loguru import logger
 from aiogram import Router, F, Bot
 from aiogram.filters import Command, CommandObject
-from aiogram.types import Message, ChatMemberUpdated
+from aiogram.types import Message, ChatMemberUpdated, CallbackQuery
 from aiogram.filters.chat_member_updated import ChatMemberUpdatedFilter, JOIN_TRANSITION
 
 from database import (
@@ -11,14 +14,15 @@ from database import (
     get_top_users, get_chat_stats, claim_daily,
     get_top_inviters, update_user_rank,
 )
-from keyboards import invite_keyboard
+from keyboards import invite_keyboard, welcome_keyboard
 from services import award_daily, register_bot_referral, register_chat_referral
 from utils import (
     calculate_rank, get_rank_label, get_rank_title,
     messages_to_next_rank, rank_progress_bar,
-    mention_html, WELCOME_DEFAULT, HELP_MSG, START_MSG, BOTFATHER_COMMANDS,
+    mention_html, escape_html, safe_format,
+    WELCOME_DEFAULT, HELP_MSG, START_MSG, BOTFATHER_COMMANDS,
     INVITE_MSG, DAILY_MSG, DAILY_DONE_MSG, RULES_DEFAULT, INVITE_JOIN_MSG,
-    RANK_UP_MSG, format_mana, get_config,
+    RANK_UP_MSG, EARN_MSG, format_mana, get_config,
 )
 
 router = Router()
@@ -41,10 +45,13 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot) -> None:
                 await register_bot_referral(bot, inviter_id, message.from_user.id)
             except Exception:
                 pass
+
+    # Маркетинговый «крючок» из приветствия: t.me/bot?start=earn
+    text = EARN_MSG if payload == "earn" else START_MSG
     try:
-        await message.answer(START_MSG, parse_mode="HTML")
+        await message.answer(text, parse_mode="HTML")
     except Exception as e:
-        await message.answer(f"Ошибка: {e}")
+        logger.warning(f"[START] send failed: {e}")
 
 
 # ── /help ──────────────────────────────────────────────────────────────────────
@@ -54,7 +61,7 @@ async def cmd_help(message: Message) -> None:
     try:
         await message.answer(HELP_MSG, parse_mode="HTML")
     except Exception as e:
-        await message.answer(f"Ошибка: {e}")
+        logger.warning(f"[HELP] send failed: {e}")
 
 
 # ── /commands — список команд для BotFather ────────────────────────────────────
@@ -64,7 +71,7 @@ async def cmd_commands(message: Message) -> None:
     try:
         await message.answer(BOTFATHER_COMMANDS, parse_mode="HTML")
     except Exception as e:
-        await message.answer(f"Ошибка: {e}")
+        logger.warning(f"[COMMANDS] send failed: {e}")
 
 
 # ── /ping ──────────────────────────────────────────────────────────────────────
@@ -141,7 +148,7 @@ async def cmd_top(message: Message) -> None:
     MEDALS = ["🥇", "🥈", "🥉"] + ["🔹"] * 7
     lines = ["⚡ <b>ТОП ОХОТНИКОВ ЧАТА</b>\n"]
     for i, u in enumerate(users):
-        name = u.get("full_name") or u.get("username") or str(u["user_id"])
+        name = escape_html(u.get("full_name") or u.get("username") or str(u["user_id"]))
         label = get_rank_label(u.get("rank", "E"))
         lines.append(
             f"{MEDALS[i]} {i+1}. <b>{name}</b> {label} — {u['messages']} сообщений"
@@ -207,7 +214,7 @@ async def cmd_stats(message: Message) -> None:
 
     text = (
         f"📊 <b>СТАТИСТИКА ЧАТА</b>\n"
-        f"<i>{chat.title}</i> — последние 7 дней\n\n"
+        f"<i>{escape_html(chat.title)}</i> — последние 7 дней\n\n"
         f"💬 Сообщений: <b>{total_msgs}</b>\n"
         f"🗑 Удалено: <b>{total_deleted}</b>\n"
         f"⚠️ Предупреждений: <b>{total_warns}</b>\n"
@@ -304,7 +311,7 @@ async def cmd_invite(message: Message, bot: Bot) -> None:
         user.id, chat.id, username=user.username or "", full_name=user.full_name,
     )
     rank = calculate_rank(db_user.get("messages", 0))
-    text = INVITE_MSG.format(chat=chat.title or "наш чат", rank=get_rank_label(rank))
+    text = INVITE_MSG.format(chat=escape_html(chat.title or "наш чат"), rank=get_rank_label(rank))
     share_text = (
         f"⚔️ Заходи в «{chat.title or 'наш чат'}» — система рангов Solo Leveling, "
         f"топы охотников и ежедневные бонусы!"
@@ -328,7 +335,7 @@ async def cmd_invites(message: Message) -> None:
     MEDALS = ["🥇", "🥈", "🥉"] + ["🔹"] * 7
     lines = ["👥 <b>ТОП ВЕРБОВЩИКОВ ГИЛЬДИИ</b>\n"]
     for i, u in enumerate(inviters):
-        name = u.get("full_name") or u.get("username") or str(u["user_id"])
+        name = escape_html(u.get("full_name") or u.get("username") or str(u["user_id"]))
         lines.append(f"{MEDALS[i]} {i+1}. <b>{name}</b> — {u['invited_count']} приглашённых")
     await message.answer("\n".join(lines), parse_mode="HTML")
 
@@ -356,6 +363,44 @@ async def _sync_rank(message: Message, user_id: int, chat_id: int, messages: int
             pass
 
 
+# ── Авто-чистка сервисных сообщений «X присоединился / вышел» ────────────────────
+
+@router.message(
+    F.chat.type.in_({"group", "supergroup"}),
+    F.new_chat_members | F.left_chat_member,
+)
+async def clean_service_messages(message: Message) -> None:
+    """
+    Удаляет сервисные сообщения о входе/выходе, чтобы чат был чистым.
+    Бот сам наводит порядок вместо админов. Управляется настройкой
+    `delete_service_msgs` (по умолчанию включено). Идёт в user_router,
+    который проверяется раньше moderation_router, поэтому модерация это
+    сообщение уже не увидит (и не начислит за него руду).
+    """
+    settings = await get_chat_settings(message.chat.id)
+    if not settings.get("delete_service_msgs", 1):
+        return
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+
+# ── Кнопка «Правила» в приветствии ───────────────────────────────────────────────
+
+@router.callback_query(F.data == "welcome:rules")
+async def cb_welcome_rules(call: CallbackQuery) -> None:
+    settings = await get_chat_settings(call.message.chat.id)
+    rules = settings.get("rules") or RULES_DEFAULT
+    try:
+        await call.answer()
+        notify = await call.message.answer(rules, parse_mode="HTML")
+        await asyncio.sleep(30)
+        await notify.delete()
+    except Exception:
+        pass
+
+
 # ── Welcome new members ────────────────────────────────────────────────────────
 
 @router.chat_member(ChatMemberUpdatedFilter(JOIN_TRANSITION))
@@ -375,15 +420,21 @@ async def on_new_member(event: ChatMemberUpdated) -> None:
     rank_label = get_rank_label(rank)
 
     welcome = settings.get("welcome_msg") or WELCOME_DEFAULT
-    text = welcome.format(
+    text = safe_format(
+        welcome,
         mention=mention_html(user),
-        name=user.full_name,
-        username=f"@{user.username}" if user.username else user.full_name,
+        name=escape_html(user.full_name),
+        username=escape_html(f"@{user.username}" if user.username else user.full_name),
         rank_label=rank_label,
-        chat=event.chat.title or "",
+        chat=escape_html(event.chat.title or ""),
     )
     try:
-        await event.answer(text, parse_mode="HTML")
+        bot_username = get_config().bot_username
+        await event.answer(
+            text,
+            parse_mode="HTML",
+            reply_markup=welcome_keyboard(bot_username) if bot_username else None,
+        )
     except Exception:
         pass
 

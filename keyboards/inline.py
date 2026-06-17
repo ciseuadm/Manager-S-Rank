@@ -61,6 +61,12 @@ def settings_keyboard(settings: dict) -> InlineKeyboardMarkup:
         ),
     )
     builder.row(
+        InlineKeyboardButton(
+            text=f"{toggle(settings.get('delete_service_msgs', 1))} Чистить вход/выход",
+            callback_data="toggle:delete_service_msgs",
+        ),
+    )
+    builder.row(
         InlineKeyboardButton(text="📝 Приветствие", callback_data="set:welcome_msg"),
     )
     builder.row(
@@ -82,6 +88,27 @@ def invite_keyboard(link: str, share_text: str) -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(text="🔗 Открыть чат", url=link),
+    )
+    return builder.as_markup()
+
+
+def welcome_keyboard(bot_username: str) -> InlineKeyboardMarkup:
+    """
+    Маркетинговый «крючок» в приветствии новичка: ведём в личку бота,
+    чтобы человек начал фармить руду, и даём быстрый доступ к правилам.
+    """
+    base = f"https://t.me/{bot_username}"
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="⚡ Открыть Систему", url=f"{base}?start=welcome"),
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="💎 Как заработать руду", url=f"{base}?start=earn"
+        ),
+    )
+    builder.row(
+        InlineKeyboardButton(text="📜 Правила", callback_data="welcome:rules"),
     )
     return builder.as_markup()
 

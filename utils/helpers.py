@@ -1,4 +1,5 @@
 import asyncio
+import html
 
 from aiogram import Bot
 from aiogram.types import Message, User
@@ -36,13 +37,39 @@ def is_owner(user_id: int | None) -> bool:
     return bool(user_id) and _OWNER_ID != 0 and user_id == _OWNER_ID
 
 
+def escape_html(text: str | None) -> str:
+    """
+    Escape user-controlled text before putting it into a parse_mode=HTML message.
+    Telegram rejects malformed HTML (breaks the message) and unescaped names can
+    inject markup/links — so every user/chat-supplied string must pass through here.
+    """
+    return html.escape(str(text), quote=False) if text is not None else ""
+
+
 def mention_html(user: User) -> str:
-    name = user.full_name or user.username or str(user.id)
+    name = escape_html(user.full_name or user.username or str(user.id))
     return f'<a href="tg://user?id={user.id}">{name}</a>'
 
 
 def mention_html_raw(user_id: int, name: str) -> str:
-    return f'<a href="tg://user?id={user_id}">{name}</a>'
+    return f'<a href="tg://user?id={user_id}">{escape_html(name) or user_id}</a>'
+
+
+class _SafeDict(dict):
+    """Missing keys render as empty string instead of raising KeyError."""
+    def __missing__(self, key):
+        return ""
+
+
+def safe_format(template: str, **kwargs) -> str:
+    """
+    Format an admin-supplied template without crashing on stray/unknown braces
+    or attribute-access injection. Unknown placeholders become empty strings.
+    """
+    try:
+        return template.format_map(_SafeDict(**kwargs))
+    except (ValueError, IndexError, AttributeError, KeyError):
+        return template
 
 
 def parse_time_arg(arg: str) -> int:

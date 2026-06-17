@@ -23,8 +23,9 @@ from database import init_db, close_db
 from handlers import (
     moderation_router, admin_router, user_router, settings_router,
     owner_router, economy_router, referral_router, payments_router,
-    ads_router, set_bot_id,
+    ads_router, tasks_router, cursor_router, set_bot_id,
 )
+from services.cursor_bridge import bridge as cursor_bridge
 from middlewares import ThrottleMiddleware
 from scheduler import setup_scheduler
 from utils import set_owner_id, set_config
@@ -68,6 +69,9 @@ PUBLIC_COMMANDS = [
     BotCommand(command="wallet", description="🔹 Хранилище Мана-руды"),
     BotCommand(command="shop", description="🛒 Рынок гильдии"),
     BotCommand(command="daily", description="🎁 Ежедневный бонус"),
+    BotCommand(command="tasks", description="📋 Задания за руду"),
+    BotCommand(command="redeem", description="🎁 Обменять руду на подарок"),
+    BotCommand(command="achievements", description="🏅 Мои достижения"),
     BotCommand(command="invite", description="⚔️ Пригласить друзей"),
     BotCommand(command="myref", description="🔗 Моя реф-ссылка"),
     BotCommand(command="vip", description="👑 VIP-зал"),
@@ -84,6 +88,8 @@ PUBLIC_COMMANDS = [
 PRIVATE_COMMANDS = [
     BotCommand(command="start", description="⚡ Главное меню бота"),
     BotCommand(command="wallet", description="🔹 Хранилище Мана-руды"),
+    BotCommand(command="tasks", description="📋 Задания за руду"),
+    BotCommand(command="redeem", description="🎁 Обменять руду на подарок"),
     BotCommand(command="shop", description="🛒 Рынок гильдии"),
     BotCommand(command="buy", description="💎 Купить руду за Stars"),
     BotCommand(command="myref", description="🔗 Моя реф-ссылка"),
@@ -127,6 +133,10 @@ OWNER_COMMANDS = PRIVATE_COMMANDS + [
     BotCommand(command="newad", description="📢 Новая рекламная кампания"),
     BotCommand(command="ads", description="📢 Кампании и статистика"),
     BotCommand(command="sendads", description="📤 Разослать рекламу сейчас"),
+    BotCommand(command="addtask", description="🆕 Новое задание-подписка"),
+    BotCommand(command="tasklist", description="📋 Список заданий"),
+    BotCommand(command="payouts", description="🎁 Заявки на вывод"),
+    BotCommand(command="cursor", description="🛰 Связь с Курсором"),
 ]
 
 
@@ -156,6 +166,13 @@ async def on_startup(bot: Bot, config) -> None:
     set_owner_id(config.owner_id)
     config.bot_username = me.username or ""
     set_config(config)
+    cursor_bridge.configure(
+        config.cursor_api_key, config.cursor_model_sonnet, config.cursor_model_opus
+    )
+    if cursor_bridge.available():
+        logger.info("Cursor bridge: configured (/cursor available to owner)")
+    else:
+        logger.info("Cursor bridge: disabled (no CURSOR_API_KEY or cursor-sdk)")
     try:
         await setup_commands(bot, config.owner_id)
     except Exception as e:
@@ -181,6 +198,10 @@ async def on_shutdown(bot: Bot, scheduler=None) -> None:
             scheduler.shutdown(wait=False)
         except Exception:
             pass
+    try:
+        await cursor_bridge.close()
+    except Exception:
+        pass
     await close_db()
 
 
@@ -209,11 +230,14 @@ async def main() -> None:
     )
     dp = Dispatcher(storage=MemoryStorage())
 
-    # Middlewares
-    dp.message.middleware(ThrottleMiddleware(rate=0.5))
+    # Middlewares — throttle messages and inline-button taps (anti-flood / anti-spam).
+    throttle = ThrottleMiddleware(rate=0.5, callback_rate=0.7)
+    dp.message.middleware(throttle)
+    dp.callback_query.middleware(throttle)
 
     # Routers — order matters: moderation last so admin commands take priority
     dp.include_router(owner_router)
+    dp.include_router(tasks_router)
     dp.include_router(ads_router)
     dp.include_router(admin_router)
     dp.include_router(user_router)
@@ -221,6 +245,7 @@ async def main() -> None:
     dp.include_router(economy_router)
     dp.include_router(referral_router)
     dp.include_router(payments_router)
+    dp.include_router(cursor_router)
     dp.include_router(moderation_router)
 
     dp.errors.register(on_error)

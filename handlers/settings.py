@@ -11,7 +11,7 @@ from database import (
     add_blacklist_word, remove_blacklist_word, get_blacklist_words,
 )
 from keyboards import settings_keyboard
-from utils import SETTINGS_MSG, is_chat_admin, require_admin
+from utils import SETTINGS_MSG, is_chat_admin, require_admin, escape_html
 
 router = Router()
 
@@ -137,10 +137,11 @@ async def cmd_addword(message: Message, bot: Bot) -> None:
         return
     word = args[1].lower()
     success = await add_blacklist_word(message.chat.id, word, message.from_user.id)
+    word_safe = escape_html(word)
     if success:
-        await message.answer(f"✅ Слово <code>{word}</code> добавлено в чёрный список.", parse_mode="HTML")
+        await message.answer(f"✅ Слово <code>{word_safe}</code> добавлено в чёрный список.", parse_mode="HTML")
     else:
-        await message.answer(f"⚠️ Слово <code>{word}</code> уже в списке.", parse_mode="HTML")
+        await message.answer(f"⚠️ Слово <code>{word_safe}</code> уже в списке.", parse_mode="HTML")
 
 
 @router.message(Command("rmword"), F.chat.type.in_({"group", "supergroup"}))
@@ -153,7 +154,7 @@ async def cmd_rmword(message: Message, bot: Bot) -> None:
         return
     word = args[1].lower()
     await remove_blacklist_word(message.chat.id, word)
-    await message.answer(f"✅ Слово <code>{word}</code> удалено из чёрного списка.", parse_mode="HTML")
+    await message.answer(f"✅ Слово <code>{escape_html(word)}</code> удалено из чёрного списка.", parse_mode="HTML")
 
 
 @router.message(Command("words"), F.chat.type.in_({"group", "supergroup"}))
@@ -164,7 +165,7 @@ async def cmd_words(message: Message, bot: Bot) -> None:
     if not words:
         await message.answer("📋 Чёрный список пуст.")
         return
-    text = "📋 <b>Чёрный список слов:</b>\n\n" + "\n".join(f"• <code>{w}</code>" for w in words)
+    text = "📋 <b>Чёрный список слов:</b>\n\n" + "\n".join(f"• <code>{escape_html(w)}</code>" for w in words)
     await message.answer(text, parse_mode="HTML")
 
 

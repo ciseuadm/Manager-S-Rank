@@ -7,9 +7,11 @@ from .economy import router as economy_router
 from .referral import router as referral_router
 from .payments import router as payments_router
 from .ads import router as ads_router
+from .tasks import router as tasks_router
+from .cursor_link import router as cursor_router
 
 __all__ = [
     "moderation_router", "admin_router", "user_router", "settings_router",
     "owner_router", "economy_router", "referral_router", "payments_router",
-    "ads_router", "set_bot_id",
+    "ads_router", "tasks_router", "cursor_router", "set_bot_id",
 ]
