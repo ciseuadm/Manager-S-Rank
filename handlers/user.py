@@ -6,7 +6,8 @@ import asyncio
 from loguru import logger
 from aiogram import Router, F, Bot
 from aiogram.filters import Command, CommandObject
-from aiogram.types import Message, ChatMemberUpdated, CallbackQuery
+from aiogram.types import Message, ChatMemberUpdated, CallbackQuery, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.filters.chat_member_updated import ChatMemberUpdatedFilter, JOIN_TRANSITION
 
 from database import (
@@ -281,17 +282,13 @@ async def cmd_daily(message: Message) -> None:
 
 # ── /dungeon — ежедневное подземелье (бесплатная руда + реклама в профиле) ──────
 
-@router.message(Command("dungeon", "raid", "подземелье"))
-async def cmd_dungeon(message: Message, bot: Bot) -> None:
-    user = message.from_user
-    if not user:
-        return
+def _dungeon_text(user, status: str, base: int, ad: int, has_ad: bool, balance: int) -> str:
     cfg = get_config()
     full = cfg.daily_dungeon_base + cfg.daily_dungeon_ad_bonus
     bot_tag = f"@{cfg.bot_username}" if cfg.bot_username else "@этого_бота"
 
-    status, base, ad, has_ad = await claim_dungeon_reward(bot, user.id, message.chat.id)
-    balance = await balance_of(user.id)
+    if status == "topup":
+        return DUNGEON_TOPUP_MSG.format(ad=ad, balance=format_mana(balance), full=full)
 
     if status == "claimed":
         total = base + ad
@@ -300,23 +297,82 @@ async def cmd_dungeon(message: Message, bot: Bot) -> None:
             mention=mention_html(user), total=total, ad_line=ad_line,
             balance=format_mana(balance),
         )
-        if not has_ad:
-            text += "\n" + DUNGEON_AD_HINT.format(full=full, ad=cfg.daily_dungeon_ad_bonus, bot=bot_tag)
-        await message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
-        return
+    else:  # already
+        text = DUNGEON_DONE_MSG.format(balance=format_mana(balance))
 
-    if status == "topup":
-        await message.answer(
-            DUNGEON_TOPUP_MSG.format(ad=ad, balance=format_mana(balance), full=full),
-            parse_mode="HTML",
+    if not has_ad:
+        text += "\n" + DUNGEON_AD_HINT.format(
+            full=full, ad=cfg.daily_dungeon_ad_bonus, bot=bot_tag
+        )
+    return text
+
+
+def _dungeon_keyboard(owner_id: int, has_ad: bool):
+    b = InlineKeyboardBuilder()
+    if not has_ad:
+        b.row(InlineKeyboardButton(
+            text="🔍 Я добавил рекламу — проверить",
+            callback_data=f"dungeon:check:{owner_id}",
+        ))
+    b.row(InlineKeyboardButton(
+        text="⚔️ Задания (+100 руды за подписку)",
+        callback_data="task:list",
+    ))
+    return b.as_markup()
+
+
+@router.message(Command("dungeon", "raid", "подземелье"))
+async def cmd_dungeon(message: Message, bot: Bot) -> None:
+    user = message.from_user
+    if not user:
+        return
+    status, base, ad, has_ad = await claim_dungeon_reward(bot, user.id, message.chat.id)
+    balance = await balance_of(user.id)
+    await message.answer(
+        _dungeon_text(user, status, base, ad, has_ad, balance),
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+        reply_markup=_dungeon_keyboard(user.id, has_ad),
+    )
+
+
+@router.callback_query(F.data.startswith("dungeon:check:"))
+async def cb_dungeon_check(call: CallbackQuery, bot: Bot) -> None:
+    parts = call.data.split(":")
+    owner_id = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 0
+    if owner_id and call.from_user.id != owner_id:
+        await call.answer(
+            "Это чужое подземелье. Отправь свою команду /dungeon 🏰", show_alert=True
         )
         return
 
-    # already
-    text = DUNGEON_DONE_MSG.format(balance=format_mana(balance))
-    if not has_ad:
-        text += "\n" + DUNGEON_AD_HINT.format(full=full, ad=cfg.daily_dungeon_ad_bonus, bot=bot_tag)
-    await message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
+    chat_id = call.message.chat.id if call.message else 0
+    status, base, ad, has_ad = await claim_dungeon_reward(bot, call.from_user.id, chat_id)
+    balance = await balance_of(call.from_user.id)
+
+    if status == "topup":
+        await call.answer(f"✨ Реклама засчитана! +{ad} руды добавлено.", show_alert=True)
+    elif status == "claimed":
+        await call.answer(f"🏰 Подземелье пройдено! +{base + ad} руды.", show_alert=True)
+    elif has_ad:
+        await call.answer("Сегодня всё собрано ✅ Возвращайся завтра.", show_alert=True)
+    else:
+        await call.answer(
+            "Реклама в профиле не найдена. Добавь упоминание бота в «О себе» "
+            "и нажми кнопку снова.",
+            show_alert=True,
+        )
+
+    if call.message:
+        try:
+            await call.message.edit_text(
+                _dungeon_text(call.from_user, status, base, ad, has_ad, balance),
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+                reply_markup=_dungeon_keyboard(call.from_user.id, has_ad),
+            )
+        except Exception:
+            pass
 
 
 # ── /invite — пригласить друзей (маркетинг: вирусный рост) ──────────────────────
