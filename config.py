@@ -35,15 +35,17 @@ class Config:
     vip_chat_link: str = ""              # инвайт-ссылка в VIP-чат с разработчиком
 
     # ── Tasks economy (платные задания) ──────────────────────────────────────
-    # Базовый пег: сколько руды стоит $1 НАШЕЙ себестоимости выплаты.
-    # 20000 руды = $1  →  100000 руды = подарок себестоимостью $5.
+    # Пег для пользователя: 50 руды = 1 ₽. Подписка 2 ₽ → 50 руды охотнику, 50 — маржа.
+    mana_per_rub: int = 50
+    stars_usd_cents_per_1000: int = 1620   # 1000 ⭐ = $16.20
+    usd_rub_rate: int = 76
+    redeem_margin_pct: int = 30            # наценка на подарки
+    # Устаревший пег (для P&L владельца); основной курс — mana_per_rub.
     mana_per_usd: int = 20000
-    # Какой процент дохода с задания отдаём пользователю (остальное — маржа).
     task_payout_ratio: int = 50
-    # Награда по умолчанию за подписку на канал (≈ $0.05 дохода × 20000 × 50%).
-    task_reward_subscribe: int = 500
-    # Минимум руды для обмена на подарок ($5 при базовом пеге).
-    redeem_min: int = 100000
+    task_reward_subscribe: int = 50        # 1 ₽ пользователю при подписке 2 ₽
+    task_revenue_rub_default: int = 2      # доход с рекламодателя за подписчика
+    redeem_min: int = 1200                 # минимум = самый дешёвый подарок (15 ⭐)
     # Час по UTC ежедневной ре-проверки подписок (clawback при отписке).
     tasks_recheck_hour: int = 3
 
@@ -53,9 +55,9 @@ class Config:
     task_streak_cap: int = 10
 
     # ── Ачивка «первые 100 к рангу A» ─────────────────────────────────────────
-    achievement_rank_a_mana: int = 100000   # порог накопленного заработка
-    achievement_first_slots: int = 100       # сколько первых получают статус
-    achievement_rank_a_bonus: int = 5000     # разовый бонус первым 100
+    achievement_rank_a_mana: int = 10000    # порог total_earned (~200 ₽ при 50 руды/₽)
+    achievement_first_slots: int = 100
+    achievement_rank_a_bonus: int = 500
 
     # ── Ads ─────────────────────────────────────────────────────────────────
     ads_enabled: bool = True
@@ -129,16 +131,21 @@ def load_config() -> Config:
         mana_transfer_fee_pct=_get_int("MANA_TRANSFER_FEE_PCT", 5),
         vip_invite_threshold=_get_int("VIP_INVITE_THRESHOLD", 50),
         vip_chat_link=os.getenv("VIP_CHAT_LINK", ""),
+        mana_per_rub=_get_int("MANA_PER_RUB", 50),
+        stars_usd_cents_per_1000=_get_int("STARS_USD_CENTS_PER_1000", 1620),
+        usd_rub_rate=_get_int("USD_RUB_RATE", 76),
+        redeem_margin_pct=_get_int("REDEEM_MARGIN_PCT", 30),
         mana_per_usd=_get_int("MANA_PER_USD", 20000),
         task_payout_ratio=_get_int("TASK_PAYOUT_RATIO", 50),
-        task_reward_subscribe=_get_int("TASK_REWARD_SUBSCRIBE", 500),
-        redeem_min=_get_int("REDEEM_MIN", 100000),
+        task_reward_subscribe=_get_int("TASK_REWARD_SUBSCRIBE", 50),
+        task_revenue_rub_default=_get_int("TASK_REVENUE_RUB", 2),
+        redeem_min=_get_int("REDEEM_MIN", 1200),
         tasks_recheck_hour=_get_int("TASKS_RECHECK_HOUR", 3),
         task_streak_step_pct=_get_int("TASK_STREAK_STEP_PCT", 10),
         task_streak_cap=_get_int("TASK_STREAK_CAP", 10),
-        achievement_rank_a_mana=_get_int("ACHIEVEMENT_RANK_A_MANA", 100000),
+        achievement_rank_a_mana=_get_int("ACHIEVEMENT_RANK_A_MANA", 10000),
         achievement_first_slots=_get_int("ACHIEVEMENT_FIRST_SLOTS", 100),
-        achievement_rank_a_bonus=_get_int("ACHIEVEMENT_RANK_A_BONUS", 5000),
+        achievement_rank_a_bonus=_get_int("ACHIEVEMENT_RANK_A_BONUS", 500),
         ads_enabled=_get_bool("ADS_ENABLED", True),
         ads_daily_limit_per_chat=_get_int("ADS_DAILY_LIMIT_PER_CHAT", 1),
         ads_send_hour=_get_int("ADS_SEND_HOUR", 12),

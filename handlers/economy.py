@@ -135,10 +135,12 @@ async def cb_shop(call: CallbackQuery) -> None:
 
     if action == "gifts":
         await call.answer()
+        from utils.redeem_ui import redeem_intro, redeem_keyboard
+        bal = await balance_of(call.from_user.id)
         await call.message.answer(
-            "🎁 Обменять руду, заработанную <b>заданиями</b>, на подарок — команда /redeem.\n"
-            "Где брать такую руду: /tasks",
+            redeem_intro(bal),
             parse_mode="HTML",
+            reply_markup=redeem_keyboard(bal).as_markup(),
         )
         return
 

@@ -23,7 +23,7 @@ from database import init_db, close_db
 from handlers import (
     moderation_router, admin_router, user_router, settings_router,
     owner_router, economy_router, referral_router, payments_router,
-    ads_router, tasks_router, cursor_router, set_bot_id,
+    ads_router, tasks_router, cursor_router, fun_router, set_bot_id,
 )
 from services.cursor_bridge import bridge as cursor_bridge
 from middlewares import ThrottleMiddleware
@@ -80,6 +80,9 @@ PUBLIC_COMMANDS = [
     BotCommand(command="info", description="ℹ️ Инфо о пользователе"),
     BotCommand(command="stats", description="📈 Статистика чата"),
     BotCommand(command="rules", description="📜 Правила чата"),
+    BotCommand(command="oracle", description="🔮 Предсказание Системы"),
+    BotCommand(command="duel", description="⚔️ Дуэль охотников"),
+    BotCommand(command="dice", description="🎲 Бросок кубика"),
     BotCommand(command="help", description="📋 Список команд"),
     BotCommand(command="id", description="🆔 Узнать свой ID"),
 ]
@@ -252,6 +255,7 @@ async def main() -> None:
     dp.include_router(economy_router)
     dp.include_router(referral_router)
     dp.include_router(payments_router)
+    dp.include_router(fun_router)
     dp.include_router(cursor_router)
     dp.include_router(moderation_router)
 

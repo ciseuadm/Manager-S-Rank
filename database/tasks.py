@@ -132,11 +132,27 @@ async def get_credited_channel_completions() -> list[dict]:
     """Все засчитанные подписки (для ежедневной ре-проверки/clawback)."""
     db = await get_db()
     async with db.execute(
-        """SELECT tc.id AS comp_id, tc.user_id, tc.reward,
-                  t.id AS task_id, t.channel_id, t.title
+        """SELECT tc.id AS comp_id, tc.user_id, tc.reward, tc.status,
+                  t.id AS task_id, t.channel_id, t.title, t.url, t.channel_username
            FROM task_completions tc
            JOIN tasks t ON t.id = tc.task_id
            WHERE tc.status = 'credited' AND t.type = 'channel_sub'""",
+    ) as cur:
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def get_user_channel_task_completions(user_id: int) -> list[dict]:
+    """Все подписки-задания пользователя (credited и reverted) с ссылками."""
+    db = await get_db()
+    async with db.execute(
+        """SELECT tc.id AS comp_id, tc.status, tc.reward, tc.task_id,
+                  t.title, t.url, t.channel_username, t.channel_id, t.active
+           FROM task_completions tc
+           JOIN tasks t ON t.id = tc.task_id
+           WHERE tc.user_id = ? AND t.type = 'channel_sub'
+           ORDER BY tc.id DESC""",
+        (user_id,),
     ) as cur:
         rows = await cur.fetchall()
     return [dict(r) for r in rows]

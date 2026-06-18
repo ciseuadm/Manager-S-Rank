@@ -26,9 +26,11 @@ from database import (
 )
 from services import (
     list_available_tasks, check_and_credit_subscription, request_payout,
-    refund_payout, mana_to_usd_cents, balance_of,
-    user_streak, streak_multiplier,
+    refund_payout, mana_to_usd_cents, mana_to_rub, balance_of,
+    user_streak, streak_multiplier, find_unsubscribed_channels, resubscribe_keyboard,
 )
+from services.gifts import get_catalog, send_telegram_gift, offer_from_product
+from utils.redeem_ui import redeem_intro, redeem_keyboard
 from utils import is_owner, get_config, format_mana, mention_html_raw
 from utils.media import answer_with_banner
 
@@ -59,27 +61,12 @@ def _tasks_keyboard(tasks: list[dict]) -> InlineKeyboardBuilder:
     return b
 
 
-def _redeem_tiers() -> list[tuple[int, str]]:
-    cfg = get_config()
-    m = cfg.redeem_min
-    return [
-        (m, "🎁 Подарок Telegram"),
-        (m * 2, "🎁 Премиум-подарок"),
-        (m * 4, "👑 Telegram Premium"),
-    ]
-
-
 def _redeem_keyboard(balance: int) -> InlineKeyboardBuilder:
-    b = InlineKeyboardBuilder()
-    for amount, label in _redeem_tiers():
-        ok = balance >= amount
-        prefix = "" if ok else "🔒 "
-        b.row(InlineKeyboardButton(
-            text=f"{prefix}{label} — {format_mana(amount)}",
-            callback_data=f"redeem:{amount}",
-        ))
-    b.row(InlineKeyboardButton(text="✖ Закрыть", callback_data="redeem:close"))
-    return b
+    return redeem_keyboard(balance)
+
+
+def _redeem_intro(balance: int) -> str:
+    return redeem_intro(balance)
 
 
 # ── /tasks ───────────────────────────────────────────────────────────────────
@@ -114,7 +101,8 @@ async def _render_tasks(user_id: int) -> tuple[str, InlineKeyboardBuilder]:
         f"{mult_line}\n"
         "1. Подпишись на канал по кнопке.\n"
         "2. Нажми «Проверить» — Система начислит руду (с учётом множителя).\n"
-        "3. Оставайся подписан на ВСЕ каналы: при отписке награда и стрик падают.\n\n"
+        "3. <b>Не отписывайся</b> от каналов — иначе руда отзывается, стрик сбрасывается.\n"
+        "   При отписке придёт сообщение с кнопками «вернуться на канал».\n\n"
         "Обменять руду на подарок: /redeem · Достижения: /achievements"
     )
     return text, _tasks_keyboard(tasks)
@@ -158,10 +146,22 @@ async def cb_task_check(call: CallbackQuery, bot: Bot) -> None:
     elif code == "already":
         await call.answer("Награда за это задание уже получена.", show_alert=True)
     elif code == "not_subscribed":
+        missing = await find_unsubscribed_channels(bot, call.from_user.id)
         await call.answer(
-            "❌ Подписка не найдена. Подпишись на канал и нажми «Проверить» снова.",
+            "❌ Подписка не найдена. Подпишись и нажми «Проверить» снова.",
             show_alert=True,
         )
+        if missing:
+            try:
+                await call.message.answer(
+                    "📌 <b>Нужно вернуться на каналы</b>\n\n"
+                    "Система видит отписку. Подпишись по кнопкам ниже, "
+                    "затем снова нажми «Проверить» в /tasks.",
+                    parse_mode="HTML",
+                    reply_markup=resubscribe_keyboard(missing),
+                )
+            except Exception:
+                pass
     elif code == "inactive":
         await call.answer("Это задание больше не активно.", show_alert=True)
     else:  # misconfig
@@ -187,17 +187,12 @@ async def cb_task_check(call: CallbackQuery, bot: Bot) -> None:
 async def cmd_redeem(message: Message) -> None:
     if not message.from_user:
         return
-    cfg = get_config()
     balance = await balance_of(message.from_user.id)
-    text = (
-        "🎁 <b>ОБМЕН РУДЫ НА ПОДАРКИ</b>\n\n"
-        f"🔹 Твой баланс: <b>{format_mana(balance)}</b>\n\n"
-        f"Минимум для обмена: <b>{format_mana(cfg.redeem_min)}</b>.\n"
-        "Выбери награду ниже. Заявка уйдёт на подтверждение Системе, "
-        "после чего подарок будет отправлен."
+    await message.answer(
+        _redeem_intro(balance),
+        parse_mode="HTML",
+        reply_markup=_redeem_keyboard(balance).as_markup(),
     )
-    await message.answer(text, parse_mode="HTML",
-                         reply_markup=_redeem_keyboard(balance).as_markup())
 
 
 @router.callback_query(F.data == "redeem:close")
@@ -212,46 +207,69 @@ async def cb_redeem_close(call: CallbackQuery) -> None:
 @router.callback_query(F.data.startswith("redeem:"))
 async def cb_redeem(call: CallbackQuery, bot: Bot) -> None:
     part = call.data.split(":")[1]
-    if not part.isdigit():
+    if part == "close":
         await call.answer()
         return
-    amount = int(part)
-    # Подбираем человекочитаемое имя награды.
-    label = next((lbl for amt, lbl in _redeem_tiers() if amt == amount), "Подарок")
 
-    ok, req_id, err = await request_payout(call.from_user.id, amount, label)
+    catalog = get_catalog()
+    offer = next((g for g in catalog if g.key == part), None)
+    if not offer:
+        await call.answer("Подарок не найден.", show_alert=True)
+        return
+
+    product = f"gift:{offer.key}"
+    ok, req_id, err = await request_payout(call.from_user.id, offer.mana_price, product)
     if not ok:
         await call.answer(f"❌ {err}", show_alert=True)
         return
 
     await call.answer("✅ Заявка создана!", show_alert=True)
-    try:
-        await call.message.edit_text(
-            "✅ <b>ЗАЯВКА НА ОБМЕН СОЗДАНА</b>\n\n"
-            f"Награда: <b>{label}</b>\n"
-            f"Списано: <b>{format_mana(amount)}</b>\n"
-            f"Заявка №{req_id} — ожидает подтверждения Системы.\n\n"
-            "<i>Как только Монарх подтвердит — подарок будет отправлен. "
-            "Если что-то пойдёт не так, руда вернётся на баланс.</i>",
-            parse_mode="HTML",
+
+    # Авто-отправка подарка (если на балансе бота есть ⭐).
+    sent = False
+    send_err = ""
+    if req_id:
+        gift_ok, gift_msg = await send_telegram_gift(bot, call.from_user.id, offer)
+        if gift_ok:
+            await set_payout_status(req_id, "approved", note="auto_send_gift")
+            sent = True
+        else:
+            send_err = gift_msg
+
+    if sent:
+        body = (
+            "🎉 <b>ПОДАРОК ОТПРАВЛЕН!</b>\n\n"
+            f"{offer.emoji} <b>{offer.title}</b> ({offer.subtitle})\n"
+            f"Списано: <b>{format_mana(offer.mana_price)}</b>\n\n"
+            "<i>Проверь профиль Telegram — подарок уже там.</i>"
         )
+    else:
+        body = (
+            "✅ <b>ЗАЯВКА НА ОБМЕН СОЗДАНА</b>\n\n"
+            f"{offer.emoji} <b>{offer.title}</b>\n"
+            f"Списано: <b>{format_mana(offer.mana_price)}</b>\n"
+            f"Заявка №{req_id} — Монарх отправит подарок вручную.\n"
+        )
+        if send_err:
+            body += f"\n<i>(Авто-отправка: {send_err})</i>"
+
+    try:
+        await call.message.edit_text(body, parse_mode="HTML")
     except Exception:
         pass
 
-    # Уведомляем владельца.
     cfg = get_config()
-    if cfg.owner_id:
+    if cfg.owner_id and req_id and not sent:
         try:
-            usd = mana_to_usd_cents(amount) / 100
+            rub = mana_to_rub(offer.mana_price)
             await bot.send_message(
                 cfg.owner_id,
-                "🎁 <b>НОВАЯ ЗАЯВКА НА ВЫВОД</b>\n\n"
+                "🎁 <b>НОВАЯ ЗАЯВКА НА ПОДАРОК</b>\n\n"
                 f"№{req_id}\n"
                 f"Пользователь: <code>{call.from_user.id}</code> "
                 f"({mention_html_raw(call.from_user.id, call.from_user.full_name)})\n"
-                f"Награда: <b>{label}</b>\n"
-                f"Списано руды: <b>{format_mana(amount)}</b>\n"
-                f"Себестоимость: <b>~${usd:.2f}</b>\n\n"
+                f"Подарок: <b>{offer.title}</b> ({offer.stars} ⭐)\n"
+                f"Списано: <b>{format_mana(offer.mana_price)}</b> (~{rub:.0f} ₽)\n\n"
                 f"Подтвердить: /approve {req_id}\n"
                 f"Отклонить: /reject {req_id}",
                 parse_mode="HTML",
@@ -291,6 +309,7 @@ async def cmd_achievements(message: Message) -> None:
 class NewTask(StatesGroup):
     channel = State()
     reward = State()
+    revenue = State()
     link = State()
 
 
@@ -311,7 +330,7 @@ async def cmd_addtask(message: Message, state: FSMContext) -> None:
     await state.set_state(NewTask.channel)
     await message.answer(
         "🆕 <b>НОВОЕ ЗАДАНИЕ-ПОДПИСКА</b>\n\n"
-        "Шаг 1/3. Пришли канал одним из способов:\n"
+        "Шаг 1/4. Пришли канал одним из способов:\n"
         "• <b>перешли любой пост</b> из канала, или\n"
         "• пришли <code>@username</code> канала, или\n"
         "• пришли числовой <code>-100…</code> ID.\n\n"
@@ -324,7 +343,7 @@ async def cmd_addtask(message: Message, state: FSMContext) -> None:
 
 @router.message(
     Command("cancel"), F.chat.type == "private",
-    StateFilter(NewTask.channel, NewTask.reward, NewTask.link),
+    StateFilter(NewTask.channel, NewTask.reward, NewTask.revenue, NewTask.link),
 )
 async def cmd_cancel_task(message: Message, state: FSMContext) -> None:
     if not is_owner(message.from_user.id):
@@ -383,9 +402,9 @@ async def newtask_channel(message: Message, state: FSMContext, bot: Bot) -> None
     cfg = get_config()
     await message.answer(
         f"✅ Канал: <b>{chat.title or chat.username}</b>\n\n"
-        f"Шаг 2/3. Сколько <b>руды</b> платим за подписку?\n"
-        f"Пришли число или /skip для значения по умолчанию "
-        f"(<b>{cfg.task_reward_subscribe}</b>).",
+        f"Шаг 2/4. Сколько <b>руды</b> платим охотнику за подписку?\n"
+        f"Пришли число или /skip — по умолчанию <b>{cfg.task_reward_subscribe}</b> "
+        f"(≈ 1 ₽ при курсе {cfg.mana_per_rub} руды/₽).",
         parse_mode="HTML",
     )
 
@@ -395,7 +414,7 @@ async def newtask_skip_reward(message: Message, state: FSMContext) -> None:
     if not is_owner(message.from_user.id):
         return
     await state.update_data(reward=get_config().task_reward_subscribe)
-    await _ask_link(message, state)
+    await _ask_revenue(message, state)
 
 
 @router.message(NewTask.reward, F.chat.type == "private")
@@ -407,6 +426,37 @@ async def newtask_reward(message: Message, state: FSMContext) -> None:
         await message.answer("⚠️ Пришли положительное число или /skip.")
         return
     await state.update_data(reward=int(txt))
+    await _ask_revenue(message, state)
+
+
+async def _ask_revenue(message: Message, state: FSMContext) -> None:
+    cfg = get_config()
+    await state.set_state(NewTask.revenue)
+    await message.answer(
+        f"Шаг 3/4. Сколько <b>₽</b> платит рекламодатель за подписчика?\n"
+        f"Пришли число или /skip — по умолчанию <b>{cfg.task_revenue_rub_default}</b> ₽ "
+        f"(охотник получает ~половину в руде).",
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("skip"), NewTask.revenue, F.chat.type == "private")
+async def newtask_skip_revenue(message: Message, state: FSMContext) -> None:
+    if not is_owner(message.from_user.id):
+        return
+    await state.update_data(revenue_rub=get_config().task_revenue_rub_default)
+    await _ask_link(message, state)
+
+
+@router.message(NewTask.revenue, F.chat.type == "private")
+async def newtask_revenue(message: Message, state: FSMContext) -> None:
+    if not is_owner(message.from_user.id):
+        return
+    txt = (message.text or "").strip()
+    if not txt.isdigit() or int(txt) <= 0:
+        await message.answer("⚠️ Пришли положительное число (₽) или /skip.")
+        return
+    await state.update_data(revenue_rub=int(txt))
     await _ask_link(message, state)
 
 
@@ -417,7 +467,7 @@ async def _ask_link(message: Message, state: FSMContext) -> None:
     if data.get("channel_username"):
         hint = f"\nИли /skip — возьму <code>https://t.me/{data['channel_username']}</code>."
     await message.answer(
-        "Шаг 3/3. Пришли <b>ссылку для подписки</b> (для приватных каналов — "
+        "Шаг 4/4. Пришли <b>ссылку для подписки</b> (для приватных каналов — "
         "пригласительную ссылку)." + hint,
         parse_mode="HTML",
     )
@@ -450,11 +500,8 @@ async def _finish_task(message: Message, state: FSMContext, url: str) -> None:
     data = await state.get_data()
     await state.clear()
     reward = int(data.get("reward", get_config().task_reward_subscribe))
-
-    # Обратно считаем доход для P&L: revenue = reward / (mana_per_usd * ratio/100).
-    cfg = get_config()
-    denom = cfg.mana_per_usd * cfg.task_payout_ratio / 100
-    revenue_cents = int(round(reward / denom * 100)) if denom > 0 else 0
+    revenue_rub = int(data.get("revenue_rub", get_config().task_revenue_rub_default))
+    revenue_kopecks = revenue_rub * 100
 
     task_id = await create_task(
         type="channel_sub",
@@ -463,15 +510,16 @@ async def _finish_task(message: Message, state: FSMContext, url: str) -> None:
         channel_username=data.get("channel_username", ""),
         url=url,
         reward=reward,
-        revenue_cents=revenue_cents,
+        revenue_cents=revenue_kopecks,
         daily=0,
         created_by=message.from_user.id,
     )
+    margin_rub = max(0, revenue_rub - reward / get_config().mana_per_rub)
     await message.answer(
         f"✅ <b>Задание #{task_id} создано</b>\n\n"
         f"Канал: <b>{data.get('title')}</b>\n"
-        f"Награда: <b>{format_mana(reward)}</b>\n"
-        f"Оценка дохода: <b>~${revenue_cents / 100:.2f}</b> за подписчика\n\n"
+        f"Награда охотнику: <b>{format_mana(reward)}</b> (~{reward / get_config().mana_per_rub:.1f} ₽)\n"
+        f"Доход с рекламодателя: <b>{revenue_rub} ₽</b> · маржа ~<b>{margin_rub:.1f} ₽</b>\n\n"
         f"Пользователи увидят его в /tasks. Управление: /tasklist",
         parse_mode="HTML",
     )
@@ -543,16 +591,29 @@ async def cmd_approve(message: Message, bot: Bot) -> None:
     if not req or req["status"] != "pending":
         await message.answer("Заявка не найдена или уже обработана.")
         return
-    await set_payout_status(req["id"], "approved")
+
+    offer = offer_from_product(req["product"])
+    if offer:
+        ok, msg = await send_telegram_gift(bot, req["user_id"], offer)
+        if not ok:
+            await message.answer(
+                f"❌ Авто-отправка не удалась: {msg}\n"
+                f"Отправь подарок вручную пользователю <code>{req['user_id']}</code>, "
+                f"затем повтори /approve {req['id']}.",
+                parse_mode="HTML",
+            )
+            return
+
+    await set_payout_status(req["id"], "approved", note="owner_approve")
     await message.answer(
-        f"✅ Заявка #{req['id']} подтверждена. Отправь подарок «{req['product']}» "
-        f"пользователю <code>{req['user_id']}</code> вручную, затем можно считать выполненной."
+        f"✅ Заявка #{req['id']} выполнена. "
+        f"Подарок «{req['product']}» отправлен пользователю <code>{req['user_id']}</code>."
     )
     try:
         await bot.send_message(
             req["user_id"],
-            "🎉 <b>Твоя заявка на вывод подтверждена!</b>\n"
-            f"Награда «{req['product']}» скоро будет у тебя. Спасибо, охотник!",
+            "🎉 <b>Твоя заявка на обмен выполнена!</b>\n"
+            f"Подарок уже в Telegram. Спасибо, охотник!",
             parse_mode="HTML",
         )
     except Exception:

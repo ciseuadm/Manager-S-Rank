@@ -20,6 +20,7 @@ from database import (
     get_wallet, get_credited_channel_completions, mark_completion_reverted,
     create_payout_request, count_user_credited_subs,
     award_achievement_capped, count_achievement,
+    get_user_channel_task_completions,
 )
 from utils import get_config
 
@@ -37,11 +38,84 @@ def reward_for_revenue(revenue_cents: int) -> int:
 
 
 def mana_to_usd_cents(amount: int) -> int:
-    """Себестоимость вывода `amount` руды, в центах (по базовому пегу)."""
+    """Оценка себестоимости `amount` руды в центах USD (для P&L владельца)."""
     cfg = get_config()
-    if cfg.mana_per_usd <= 0:
-        return 0
-    return int(round(amount / cfg.mana_per_usd * 100))
+    rub = amount / max(cfg.mana_per_rub, 1)
+    usd = rub / max(cfg.usd_rub_rate, 1)
+    return int(round(usd * 100))
+
+
+def mana_to_rub(amount: int) -> float:
+    cfg = get_config()
+    return amount / max(cfg.mana_per_rub, 1)
+
+
+async def find_unsubscribed_channels(bot: Bot, user_id: int) -> list[dict]:
+    """Каналы из выполненных заданий, от которых пользователь отписался."""
+    comps = await get_user_channel_task_completions(user_id)
+    seen: set[int] = set()
+    missing: list[dict] = []
+    for c in comps:
+        if c.get("status") not in ("credited", "reverted"):
+            continue
+        tid = c["task_id"]
+        if tid in seen:
+            continue
+        seen.add(tid)
+        try:
+            member = await bot.get_chat_member(c["channel_id"], user_id)
+        except Exception:
+            continue
+        if not _is_subscribed(member):
+            missing.append(c)
+    return missing
+
+
+def resubscribe_keyboard(channels: list[dict]):
+    from aiogram.types import InlineKeyboardButton
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    b = InlineKeyboardBuilder()
+    for c in channels[:12]:
+        url = c.get("url") or (
+            f"https://t.me/{c['channel_username']}" if c.get("channel_username") else None
+        )
+        if not url:
+            continue
+        title = (c.get("title") or "Канал")[:30]
+        b.row(InlineKeyboardButton(text=f"↩️ {title}", url=url))
+    b.row(InlineKeyboardButton(text="📋 Открыть задания", callback_data="task:list"))
+    return b.as_markup()
+
+
+async def notify_unsubscribe(bot: Bot, user_id: int, *, clawback_title: str = "", clawback_reward: int = 0) -> None:
+    """Сообщение об отписке + кнопки вернуться на каналы."""
+    missing = await find_unsubscribed_channels(bot, user_id)
+    lines = [
+        "⚠️ <b>Система: отписка от канала запрещена</b>\n",
+        "Ты подписался на каналы через <b>задания гильдии</b> — отписываться нельзя.",
+    ]
+    if clawback_reward:
+        lines.append(
+            f"\n❌ Награда за «{clawback_title or 'подписку'}» отозвана "
+            f"(−{clawback_reward} руды)."
+        )
+    if missing:
+        lines.append(
+            f"\n📌 Подпишись обратно на <b>{len(missing)}</b> канал(ов) — "
+            "кнопки ниже. Затем зайди в /tasks и нажми «Проверить»."
+        )
+    else:
+        lines.append("\nЗайди в /tasks и пройди проверку подписок заново.")
+    try:
+        await bot.send_message(
+            user_id,
+            "\n".join(lines),
+            parse_mode="HTML",
+            reply_markup=resubscribe_keyboard(missing) if missing else None,
+        )
+    except Exception:
+        pass
 
 
 async def user_streak(user_id: int) -> int:
@@ -189,17 +263,11 @@ async def recheck_subscriptions(bot: Bot) -> dict:
         )
         await mark_completion_reverted(c["comp_id"])
         reverted += 1
-        try:
-            await bot.send_message(
-                c["user_id"],
-                "⚠️ <b>Система зафиксировала отписку</b>\n\n"
-                f"Награда за задание «{c.get('title') or 'подписка'}» отозвана "
-                f"(−{c['reward']} руды). Подпишись снова и пройди задание заново, "
-                "чтобы вернуть награду.",
-                parse_mode="HTML",
-            )
-        except Exception:
-            pass
+        await notify_unsubscribe(
+            bot, c["user_id"],
+            clawback_title=c.get("title") or "",
+            clawback_reward=c["reward"],
+        )
     logger.info(f"[TASKS] recheck done: checked={checked} reverted={reverted}")
     return {"checked": checked, "reverted": reverted}
 
