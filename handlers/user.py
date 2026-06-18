@@ -15,13 +15,17 @@ from database import (
     get_top_inviters, update_user_rank,
 )
 from keyboards import invite_keyboard, welcome_keyboard
-from services import award_daily, register_bot_referral, register_chat_referral
+from services import (
+    award_daily, register_bot_referral, register_chat_referral,
+    claim_dungeon_reward, balance_of,
+)
 from utils import (
     calculate_rank, get_rank_label, get_rank_title,
     messages_to_next_rank, rank_progress_bar,
     mention_html, escape_html, safe_format,
     WELCOME_DEFAULT, HELP_MSG, START_MSG, BOTFATHER_COMMANDS,
     INVITE_MSG, DAILY_MSG, DAILY_DONE_MSG, RULES_DEFAULT, INVITE_JOIN_MSG,
+    DUNGEON_AD_HINT, DUNGEON_CLAIMED_MSG, DUNGEON_TOPUP_MSG, DUNGEON_DONE_MSG,
     RANK_UP_MSG, EARN_MSG, format_mana, get_config,
 )
 from utils.media import answer_with_banner
@@ -273,6 +277,46 @@ async def cmd_daily(message: Message) -> None:
         ) + mana_line,
         parse_mode="HTML",
     )
+
+
+# ── /dungeon — ежедневное подземелье (бесплатная руда + реклама в профиле) ──────
+
+@router.message(Command("dungeon", "raid", "подземелье"))
+async def cmd_dungeon(message: Message, bot: Bot) -> None:
+    user = message.from_user
+    if not user:
+        return
+    cfg = get_config()
+    full = cfg.daily_dungeon_base + cfg.daily_dungeon_ad_bonus
+    bot_tag = f"@{cfg.bot_username}" if cfg.bot_username else "@этого_бота"
+
+    status, base, ad, has_ad = await claim_dungeon_reward(bot, user.id, message.chat.id)
+    balance = await balance_of(user.id)
+
+    if status == "claimed":
+        total = base + ad
+        ad_line = f" (база {base} + реклама {ad})" if ad else ""
+        text = DUNGEON_CLAIMED_MSG.format(
+            mention=mention_html(user), total=total, ad_line=ad_line,
+            balance=format_mana(balance),
+        )
+        if not has_ad:
+            text += "\n" + DUNGEON_AD_HINT.format(full=full, ad=cfg.daily_dungeon_ad_bonus, bot=bot_tag)
+        await message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
+        return
+
+    if status == "topup":
+        await message.answer(
+            DUNGEON_TOPUP_MSG.format(ad=ad, balance=format_mana(balance), full=full),
+            parse_mode="HTML",
+        )
+        return
+
+    # already
+    text = DUNGEON_DONE_MSG.format(balance=format_mana(balance))
+    if not has_ad:
+        text += "\n" + DUNGEON_AD_HINT.format(full=full, ad=cfg.daily_dungeon_ad_bonus, bot=bot_tag)
+    await message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
 
 
 # ── /invite — пригласить друзей (маркетинг: вирусный рост) ──────────────────────

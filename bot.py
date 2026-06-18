@@ -68,8 +68,9 @@ PUBLIC_COMMANDS = [
     BotCommand(command="top", description="📊 Топ охотников чата"),
     BotCommand(command="wallet", description="🔹 Хранилище Мана-руды"),
     BotCommand(command="shop", description="🛒 Рынок гильдии"),
-    BotCommand(command="daily", description="🎁 Ежедневный бонус"),
-    BotCommand(command="tasks", description="📋 Задания за руду"),
+    BotCommand(command="dungeon", description="🏰 Подземелье: до 50 руды/день"),
+    BotCommand(command="daily", description="🎁 Ежедневный бонус опыта"),
+    BotCommand(command="tasks", description="📋 Задания: +100 руды за подписку"),
     BotCommand(command="redeem", description="🎁 Обменять руду на подарок"),
     BotCommand(command="achievements", description="🏅 Мои достижения"),
     BotCommand(command="invite", description="⚔️ Пригласить друзей"),
@@ -90,8 +91,9 @@ PUBLIC_COMMANDS = [
 # Commands shown only in private chat with the bot.
 PRIVATE_COMMANDS = [
     BotCommand(command="start", description="⚡ Главное меню бота"),
+    BotCommand(command="dungeon", description="🏰 Подземелье: до 50 руды/день"),
     BotCommand(command="wallet", description="🔹 Хранилище Мана-руды"),
-    BotCommand(command="tasks", description="📋 Задания за руду"),
+    BotCommand(command="tasks", description="📋 Задания: +100 руды за подписку"),
     BotCommand(command="redeem", description="🎁 Обменять руду на подарок"),
     BotCommand(command="shop", description="🛒 Рынок гильдии"),
     BotCommand(command="buy", description="💎 Купить руду за Stars"),

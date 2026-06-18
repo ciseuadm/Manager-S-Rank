@@ -2,6 +2,7 @@ from .broadcaster import broadcast
 from .economy import (
     award_message, award_daily, award_invite, award_rank_up,
     transfer_mana, balance_of, wallet_of, RANK_UP_BONUS,
+    claim_dungeon_reward, user_has_bot_ad,
 )
 from .referral import (
     register_bot_referral, register_chat_referral, vip_status,
@@ -19,6 +20,7 @@ __all__ = [
     "broadcast",
     "award_message", "award_daily", "award_invite", "award_rank_up",
     "transfer_mana", "balance_of", "wallet_of", "RANK_UP_BONUS",
+    "claim_dungeon_reward", "user_has_bot_ad",
     "register_bot_referral", "register_chat_referral", "vip_status",
     "send_due_ads", "send_campaign_now", "send_campaign",
     "reward_for_revenue", "mana_to_usd_cents", "mana_to_rub", "list_available_tasks",

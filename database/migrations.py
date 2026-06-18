@@ -172,6 +172,10 @@ _NEW_COLUMNS = {
         # фазу CPA (B4): окно реверса (pending) и учёт заработка заданиями (P&L).
         "mana_pending": "INTEGER DEFAULT 0",
         "tasks_earned": "INTEGER DEFAULT 0",
+        # Ежедневное подземелье: дата последнего сбора (UTC) и выдан ли
+        # сегодня бонус за рекламу бота в описании профиля.
+        "dungeon_date": "TEXT",
+        "dungeon_ad_bonus": "INTEGER DEFAULT 0",
     },
 }
 

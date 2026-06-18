@@ -12,6 +12,7 @@ from .models import (
 from .economy import (
     get_wallet, get_wallet_balance, add_mana, spend_mana, revert_mana,
     can_reward_message, mark_message_reward, get_top_mana, get_mana_emission,
+    claim_dungeon,
 )
 from .referrals import (
     add_referral, count_referrals, count_bot_referrals,
@@ -48,6 +49,7 @@ __all__ = [
     # economy
     "get_wallet", "get_wallet_balance", "add_mana", "spend_mana", "revert_mana",
     "can_reward_message", "mark_message_reward", "get_top_mana", "get_mana_emission",
+    "claim_dungeon",
     # referrals
     "add_referral", "count_referrals", "count_bot_referrals",
     "add_referral_goal", "get_referral_goals", "deactivate_goal",

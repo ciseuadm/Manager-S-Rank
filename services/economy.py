@@ -6,9 +6,11 @@ database/economy.py. Balance is GLOBAL per user (one wallet across all chats).
 """
 from typing import Optional
 
+from aiogram import Bot
+
 from database import (
     add_mana, spend_mana, get_wallet, get_wallet_balance,
-    can_reward_message, mark_message_reward,
+    can_reward_message, mark_message_reward, claim_dungeon,
 )
 from utils import get_config
 
@@ -47,6 +49,38 @@ async def award_daily(user_id: int, chat_id: int) -> int:
         return 0
     await add_mana(user_id, cfg.mana_daily_bonus, "daily", chat_id=chat_id)
     return cfg.mana_daily_bonus
+
+
+async def user_has_bot_ad(bot: Bot, user_id: int) -> bool:
+    """
+    True, если в описании профиля (bio) пользователя упомянут @username бота.
+    Используется как «реклама бота» → бонус в ежедневном подземелье.
+    """
+    cfg = get_config()
+    uname = (cfg.bot_username or "").lstrip("@").lower()
+    if not uname:
+        return False
+    try:
+        chat = await bot.get_chat(user_id)
+    except Exception:
+        return False
+    bio = (getattr(chat, "bio", "") or "").lower()
+    return uname in bio
+
+
+async def claim_dungeon_reward(
+    bot: Bot, user_id: int, chat_id: int = 0
+) -> tuple[str, int, int, bool]:
+    """
+    Сбор ежедневного подземелья с проверкой рекламы в профиле.
+    Возвращает (status, base_granted, ad_granted, has_ad).
+    """
+    cfg = get_config()
+    has_ad = await user_has_bot_ad(bot, user_id)
+    status, base, ad = await claim_dungeon(
+        user_id, has_ad, cfg.daily_dungeon_base, cfg.daily_dungeon_ad_bonus, chat_id
+    )
+    return status, base, ad, has_ad
 
 
 async def award_invite(user_id: int, chat_id: int) -> int:

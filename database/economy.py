@@ -95,6 +95,53 @@ async def revert_mana(user_id: int, amount: int, reason: str,
     return await get_wallet_balance(user_id)
 
 
+async def claim_dungeon(
+    user_id: int, has_ad: bool, base: int, ad_bonus: int, chat_id: int = 0
+) -> tuple[str, int, int]:
+    """
+    Ежедневный сбор «подземелья» (раз в UTC-сутки, глобально по user_id).
+
+    Логика:
+      • первый сбор за день → base (+ ad_bonus, если в профиле есть реклама);
+      • если уже собрал базу, но рекламы тогда не было, а теперь появилась —
+        до-выдаём ad_bonus (top-up) в тот же день;
+      • иначе → already.
+
+    Возвращает (status, base_granted, ad_granted), status ∈
+      'claimed' | 'topup' | 'already'.
+    """
+    today = datetime.utcnow().date().isoformat()
+    await get_wallet(user_id)
+    db = await get_db()
+    async with db.execute(
+        "SELECT dungeon_date, dungeon_ad_bonus FROM wallets WHERE user_id = ?",
+        (user_id,),
+    ) as cur:
+        row = await cur.fetchone()
+    last_date = row["dungeon_date"] if row else None
+    ad_given = (row["dungeon_ad_bonus"] if row else 0) or 0
+
+    if last_date != today:
+        ad_part = ad_bonus if has_ad else 0
+        await db.execute(
+            "UPDATE wallets SET dungeon_date = ?, dungeon_ad_bonus = ? WHERE user_id = ?",
+            (today, 1 if has_ad else 0, user_id),
+        )
+        await db.commit()
+        await add_mana(user_id, base + ad_part, "dungeon", chat_id=chat_id)
+        return "claimed", base, ad_part
+
+    if not ad_given and has_ad:
+        await db.execute(
+            "UPDATE wallets SET dungeon_ad_bonus = 1 WHERE user_id = ?", (user_id,)
+        )
+        await db.commit()
+        await add_mana(user_id, ad_bonus, "dungeon_ad", chat_id=chat_id)
+        return "topup", 0, ad_bonus
+
+    return "already", 0, 0
+
+
 async def can_reward_message(user_id: int, cooldown_seconds: int) -> bool:
     """True if enough time passed since the last per-message mana reward."""
     w = await get_wallet(user_id)

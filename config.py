@@ -26,9 +26,15 @@ class Config:
     # заработок шёл через задания (/tasks). Подписка ≈ 500 руды против ~1/сообщение.
     mana_per_message: int = 1
     mana_message_cooldown: int = 60      # секунд между начислениями за сообщения
-    mana_daily_bonus: int = 25
+    mana_daily_bonus: int = 0            # /daily даёт только опыт; руду даёт /dungeon
     mana_invite_bonus: int = 200
     mana_transfer_fee_pct: int = 5       # комиссия казны при /transfer
+
+    # ── Ежедневное подземелье (бесплатный крючок) ────────────────────────────
+    # /dungeon раз в день: база + бонус за рекламу бота в описании профиля.
+    # 25 + 25 = до 50 руды/день → за 30 дней до 1500 руды бесплатно.
+    daily_dungeon_base: int = 25
+    daily_dungeon_ad_bonus: int = 25
 
     # ── Referrals / VIP ─────────────────────────────────────────────────────
     vip_invite_threshold: int = 50       # приглашений в бота для VIP-доступа
@@ -43,8 +49,8 @@ class Config:
     # Устаревший пег (для P&L владельца); основной курс — mana_per_rub.
     mana_per_usd: int = 20000
     task_payout_ratio: int = 50
-    task_reward_subscribe: int = 50        # 1 ₽ пользователю при подписке 2 ₽
-    task_revenue_rub_default: int = 2      # доход с рекламодателя за подписчика
+    task_reward_subscribe: int = 100       # 2 ₽ пользователю при подписке спонсора 4 ₽
+    task_revenue_rub_default: int = 4      # доход с рекламодателя за подписчика
     redeem_min: int = 1200                 # минимум = самый дешёвый подарок (15 ⭐)
     # Час по UTC ежедневной ре-проверки подписок (clawback при отписке).
     tasks_recheck_hour: int = 3
@@ -126,9 +132,11 @@ def load_config() -> Config:
         db_path=db_path,
         mana_per_message=_get_int("MANA_PER_MESSAGE", 1),
         mana_message_cooldown=_get_int("MANA_MESSAGE_COOLDOWN", 60),
-        mana_daily_bonus=_get_int("MANA_DAILY_BONUS", 25),
+        mana_daily_bonus=_get_int("MANA_DAILY_BONUS", 0),
         mana_invite_bonus=_get_int("MANA_INVITE_BONUS", 200),
         mana_transfer_fee_pct=_get_int("MANA_TRANSFER_FEE_PCT", 5),
+        daily_dungeon_base=_get_int("DAILY_DUNGEON_BASE", 25),
+        daily_dungeon_ad_bonus=_get_int("DAILY_DUNGEON_AD_BONUS", 25),
         vip_invite_threshold=_get_int("VIP_INVITE_THRESHOLD", 50),
         vip_chat_link=os.getenv("VIP_CHAT_LINK", ""),
         mana_per_rub=_get_int("MANA_PER_RUB", 50),
@@ -137,8 +145,8 @@ def load_config() -> Config:
         redeem_margin_pct=_get_int("REDEEM_MARGIN_PCT", 30),
         mana_per_usd=_get_int("MANA_PER_USD", 20000),
         task_payout_ratio=_get_int("TASK_PAYOUT_RATIO", 50),
-        task_reward_subscribe=_get_int("TASK_REWARD_SUBSCRIBE", 50),
-        task_revenue_rub_default=_get_int("TASK_REVENUE_RUB", 2),
+        task_reward_subscribe=_get_int("TASK_REWARD_SUBSCRIBE", 100),
+        task_revenue_rub_default=_get_int("TASK_REVENUE_RUB", 4),
         redeem_min=_get_int("REDEEM_MIN", 1200),
         tasks_recheck_hour=_get_int("TASKS_RECHECK_HOUR", 3),
         task_streak_step_pct=_get_int("TASK_STREAK_STEP_PCT", 10),
