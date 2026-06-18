@@ -2,8 +2,8 @@
 Cursor-мост через Cloud Agents API (https://api.cursor.com/v1).
 
 Работает на Railway и локально: бот шлёт задачи в облачного агента Cursor,
-который клонирует GitHub-репозиторий проекта, правит код и (опционально)
-открывает PR. Ответ возвращается в Telegram.
+который правит код прямо в ветке проекта (по умолчанию main) и пушит
+без PR — Railway подхватит деплой автоматически.
 
 Нужно:
   • CURSOR_API_KEY — User API Key из Cursor Dashboard → Integrations
@@ -47,7 +47,8 @@ class CursorBridge:
         self._api_key: str = ""
         self._repo_url: str = DEFAULT_REPO
         self._repo_ref: str = DEFAULT_REF
-        self._auto_pr: bool = True
+        self._work_on_branch: bool = True   # пушить в startingRef, не в cursor/...
+        self._auto_pr: bool = False
         self._model_sonnet: str = "claude-sonnet-4-6"
         self._model_opus: str = "claude-opus-4-8"
         self.active: bool = False
@@ -61,13 +62,15 @@ class CursorBridge:
         api_key: str,
         repo_url: str = "",
         repo_ref: str = "",
-        auto_pr: bool = True,
+        work_on_branch: bool = True,
+        auto_pr: bool = False,
         model_sonnet: str = "",
         model_opus: str = "",
     ) -> None:
         self._api_key = (api_key or "").strip()
         self._repo_url = (repo_url or DEFAULT_REPO).strip()
         self._repo_ref = (repo_ref or DEFAULT_REF).strip()
+        self._work_on_branch = work_on_branch
         self._auto_pr = auto_pr
         self._model_sonnet = model_sonnet or "claude-sonnet-4-6"
         self._model_opus = model_opus or "claude-opus-4-8"
@@ -85,12 +88,17 @@ class CursorBridge:
         if not self._repo_url:
             return "⚠️ Не задан <code>CURSOR_REPO_URL</code> (GitHub-репозиторий)."
         state = "🟢 включён" if self.active else "⚪️ выключен"
-        pr = "да" if self._auto_pr else "нет"
+        if self._work_on_branch and not self._auto_pr:
+            deploy = f"пуш в <code>{self._repo_ref}</code> · без PR · Railway сам задеплоит"
+        elif self._auto_pr:
+            deploy = "режим PR (нужен merge в GitHub)"
+        else:
+            deploy = f"ветки cursor/* · PR: {'да' if self._auto_pr else 'нет'}"
         return (
             f"🛰 <b>Cursor-мост</b> (облако): {state}\n"
             f"Модель: <b>{MODEL_LABELS.get(self.model_choice, self.model_choice)}</b>\n"
             f"Репозиторий: <code>{self._repo_url}</code>\n"
-            f"Ветка: <code>{self._repo_ref}</code> · PR автоматически: <b>{pr}</b>"
+            f"Деплой: <b>{deploy}</b>"
         )
 
     # ── HTTP ─────────────────────────────────────────────────────────────────
@@ -188,8 +196,9 @@ class CursorBridge:
         """Создать cloud-агента. Возвращает (agent_id, run_id)."""
         models = await self._fetch_models()
         body: dict[str, Any] = {
-            "prompt": {"text": prompt},
+            "prompt": {"text": self._wrap_prompt(prompt)},
             "repos": [{"url": self._repo_url, "startingRef": self._repo_ref}],
+            "workOnCurrentBranch": self._work_on_branch,
             "autoCreatePR": self._auto_pr,
             "skipReviewerRequest": True,
         }
@@ -213,7 +222,9 @@ class CursorBridge:
 
     async def _create_run(self, agent_id: str, prompt: str) -> str:
         status, data = await self._api(
-            "POST", f"/agents/{agent_id}/runs", {"prompt": {"text": prompt}}
+            "POST",
+            f"/agents/{agent_id}/runs",
+            {"prompt": {"text": self._wrap_prompt(prompt)}},
         )
         if status == 409:
             raise RuntimeError("Агент занят предыдущей задачей. Подожди или нажми «Новый диалог».")
@@ -243,7 +254,16 @@ class CursorBridge:
         raise TimeoutError("Агент не ответил за 30 минут. Проверь статус в Cursor Dashboard.")
 
     @staticmethod
-    def _format_result(run: dict) -> str:
+    def _wrap_prompt(prompt: str) -> str:
+        """Подсказка агенту: пушить в текущую ветку, не просить идти в GitHub."""
+        tail = (
+            "\n\n[Система: после правок закоммить и запушь в текущую ветку репозитория. "
+            "Не создавай PR и не проси владельца заходить в GitHub — деплой идёт автоматически.]"
+        )
+        return prompt.rstrip() + tail
+
+    @staticmethod
+    def _format_result(run: dict, *, repo_ref: str = "main", direct_push: bool = True) -> str:
         text = (run.get("result") or "").strip()
         st = (run.get("status") or "").upper()
         if st == "ERROR":
@@ -254,11 +274,17 @@ class CursorBridge:
         extras: list[str] = []
         git = run.get("git") or {}
         for b in git.get("branches") or []:
+            branch = b.get("branch") or ""
             if b.get("prUrl"):
                 extras.append(f"🔗 PR: {b['prUrl']}")
-            elif b.get("branch"):
+            elif branch:
                 repo = b.get("repoUrl", "")
-                extras.append(f"🌿 Ветка: {b['branch']}" + (f" ({repo})" if repo else ""))
+                if direct_push and branch in (repo_ref, "main", "master"):
+                    extras.append(f"✅ Запушено в <code>{branch}</code> — Railway задеплоит сам")
+                else:
+                    extras.append(
+                        f"🌿 Ветка: {branch}" + (f" ({repo})" if repo else "")
+                    )
 
         agent_url = run.get("agentUrl") or run.get("url")
         if not extras and not text:
@@ -306,7 +332,11 @@ class CursorBridge:
 
                 run = await self._poll_run(agent_id, run_id)
                 st = (run.get("status") or "").upper()
-                text = self._format_result(run)
+                text = self._format_result(
+                    run,
+                    repo_ref=self._repo_ref,
+                    direct_push=self._work_on_branch and not self._auto_pr,
+                )
                 if st == "FINISHED":
                     return True, text
                 return False, text

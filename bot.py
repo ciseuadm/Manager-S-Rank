@@ -170,6 +170,7 @@ async def on_startup(bot: Bot, config) -> None:
         config.cursor_api_key,
         config.cursor_repo_url,
         config.cursor_repo_ref,
+        config.cursor_work_on_branch,
         config.cursor_auto_pr,
         config.cursor_model_sonnet,
         config.cursor_model_opus,

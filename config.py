@@ -73,7 +73,8 @@ class Config:
     cursor_api_key: str = ""
     cursor_repo_url: str = "https://github.com/ciseuadm/Manager-S-Rank"
     cursor_repo_ref: str = "main"
-    cursor_auto_pr: bool = True          # открывать PR после правок агента
+    cursor_work_on_branch: bool = True   # пуш в main, не в cursor/feature-ветки
+    cursor_auto_pr: bool = False         # False = без PR, Railway деплоит сам
     cursor_model_sonnet: str = "claude-sonnet-4-6"
     cursor_model_opus: str = "claude-opus-4-8"
 
@@ -146,7 +147,8 @@ def load_config() -> Config:
         cursor_api_key=os.getenv("CURSOR_API_KEY", "").strip(),
         cursor_repo_url=os.getenv("CURSOR_REPO_URL", "https://github.com/ciseuadm/Manager-S-Rank").strip(),
         cursor_repo_ref=os.getenv("CURSOR_REPO_REF", "main").strip(),
-        cursor_auto_pr=_get_bool("CURSOR_AUTO_PR", True),
+        cursor_work_on_branch=_get_bool("CURSOR_WORK_ON_BRANCH", True),
+        cursor_auto_pr=_get_bool("CURSOR_AUTO_PR", False),
         cursor_model_sonnet=os.getenv("CURSOR_MODEL_SONNET", "claude-sonnet-4-6").strip(),
         cursor_model_opus=os.getenv("CURSOR_MODEL_OPUS", "claude-opus-4-8").strip(),
         backup_hour=_get_int("BACKUP_HOUR", 4),
