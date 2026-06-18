@@ -5,6 +5,7 @@ Advertising control panel (owner only, private chat).
   /ads       — list campaigns + global stats
   /pausead   — pause a campaign
   /resumead  — resume a campaign
+  /deletead  — delete an obsolete campaign
   /sendads   — force-send all due campaigns now
 
 Chat-side toggle (/ads on|off in a group) lives in handlers/settings.py.
@@ -19,10 +20,10 @@ from aiogram.types import InlineKeyboardButton
 
 from database import (
     create_campaign, get_all_campaigns, get_campaign, set_campaign_status,
-    campaign_stats, ads_global_stats,
+    delete_campaign, campaign_stats, ads_global_stats,
 )
 from services import send_campaign_now, send_due_ads
-from utils import is_owner
+from utils import escape_html, is_owner
 
 router = Router()
 
@@ -183,11 +184,15 @@ async def _ads_overview() -> str:
     for c in camps:
         st = await campaign_stats(c["id"])
         icon = _STATUS_ICON.get(c["status"], "•")
+        title = escape_html((c["title"] or "—")[:24])
         lines.append(
-            f"{icon} <code>#{c['id']}</code> «{(c['title'] or '—')[:24]}» — "
+            f"{icon} <code>#{c['id']}</code> «{title}» — "
             f"дней {c['days_done']}/{c['days_total']}, показов {st.get('sent') or 0}"
         )
-    lines.append("\n⏸ Пауза: /pausead &lt;id&gt;  ▶️ /resumead &lt;id&gt;  📤 /sendads")
+    lines.append(
+        "\n⏸ Пауза: /pausead &lt;id&gt;  ▶️ /resumead &lt;id&gt;  "
+        "🗑 Удалить: /deletead &lt;id&gt;  📤 /sendads"
+    )
     return "\n".join(lines)
 
 
@@ -202,7 +207,9 @@ async def cmd_pausead(message: Message) -> None:
     if len(args) < 2 or not args[1].isdigit():
         await message.answer("Использование: <code>/pausead 3</code>", parse_mode="HTML")
         return
-    await set_campaign_status(int(args[1]), "paused")
+    if not await set_campaign_status(int(args[1]), "paused"):
+        await message.answer(f"❌ Кампания #{args[1]} не найдена или уже удалена.")
+        return
     await message.answer(f"⏸ Кампания #{args[1]} на паузе.")
 
 
@@ -212,8 +219,34 @@ async def cmd_resumead(message: Message) -> None:
     if len(args) < 2 or not args[1].isdigit():
         await message.answer("Использование: <code>/resumead 3</code>", parse_mode="HTML")
         return
-    await set_campaign_status(int(args[1]), "active")
+    if not await set_campaign_status(int(args[1]), "active"):
+        await message.answer(f"❌ Кампания #{args[1]} не найдена или уже удалена.")
+        return
     await message.answer(f"▶️ Кампания #{args[1]} снова активна.")
+
+
+@router.message(Command("deletead", "delad"), F.chat.type == "private")
+async def cmd_deletead(message: Message) -> None:
+    args = (message.text or "").split()
+    if len(args) < 2 or not args[1].isdigit():
+        await message.answer("Использование: <code>/deletead 3</code>", parse_mode="HTML")
+        return
+
+    campaign_id = int(args[1])
+    camp = await get_campaign(campaign_id)
+    if not camp:
+        await message.answer(f"❌ Кампания #{campaign_id} не найдена или уже удалена.")
+        return
+
+    if not await delete_campaign(campaign_id):
+        await message.answer(f"❌ Кампания #{campaign_id} не найдена или уже удалена.")
+        return
+
+    title = escape_html((camp.get("title") or "—")[:60])
+    await message.answer(
+        f"🗑 Кампания <code>#{campaign_id}</code> «{title}» удалена из активного списка.",
+        parse_mode="HTML",
+    )
 
 
 @router.message(Command("sendads"), F.chat.type == "private")

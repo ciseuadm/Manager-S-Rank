@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS ad_campaigns (
     target       TEXT DEFAULT 'all',        -- 'all' | 'chats' | 'channel'
     days_total   INTEGER DEFAULT 1,         -- на сколько дней оплачено
     days_done    INTEGER DEFAULT 0,
-    status       TEXT DEFAULT 'pending',    -- 'pending','active','paused','done'
+    status       TEXT DEFAULT 'pending',    -- 'pending','active','paused','done','deleted'
     created_at   TEXT DEFAULT (datetime('now'))
 );
 

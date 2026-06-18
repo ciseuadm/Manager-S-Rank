@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS ad_campaigns (
     days_total   INTEGER DEFAULT 1,
     days_done    INTEGER DEFAULT 0,
     last_sent_date TEXT,                  -- date() последней рассылки
-    status       TEXT DEFAULT 'active',   -- 'active' | 'paused' | 'done'
+    status       TEXT DEFAULT 'active',   -- 'active' | 'paused' | 'done' | 'deleted'
     created_at   TEXT DEFAULT (datetime('now'))
 );
 

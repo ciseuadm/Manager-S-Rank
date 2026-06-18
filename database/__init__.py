@@ -20,7 +20,7 @@ from .referrals import (
 )
 from .ads import (
     create_campaign, get_active_campaigns, get_all_campaigns, get_campaign,
-    set_campaign_status, mark_campaign_sent, log_impression,
+    set_campaign_status, delete_campaign, mark_campaign_sent, log_impression,
     impressions_today, campaign_stats, ads_global_stats,
 )
 from .payments import add_payment, get_payment_by_charge, payments_total
@@ -53,7 +53,7 @@ __all__ = [
     "set_chat_role", "get_chat_role", "mark_referral_rewarded",
     # ads
     "create_campaign", "get_active_campaigns", "get_all_campaigns", "get_campaign",
-    "set_campaign_status", "mark_campaign_sent", "log_impression",
+    "set_campaign_status", "delete_campaign", "mark_campaign_sent", "log_impression",
     "impressions_today", "campaign_stats", "ads_global_stats",
     # payments
     "add_payment", "get_payment_by_charge", "payments_total",

@@ -133,6 +133,7 @@ OWNER_COMMANDS = PRIVATE_COMMANDS + [
     BotCommand(command="newad", description="📢 Новая рекламная кампания"),
     BotCommand(command="ads", description="📢 Кампании и статистика"),
     BotCommand(command="sendads", description="📤 Разослать рекламу сейчас"),
+    BotCommand(command="deletead", description="🗑 Удалить рекламную кампанию"),
     BotCommand(command="addtask", description="🆕 Новое задание-подписка"),
     BotCommand(command="tasklist", description="📋 Список заданий"),
     BotCommand(command="payouts", description="🎁 Заявки на вывод"),
