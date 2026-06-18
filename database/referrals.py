@@ -51,6 +51,30 @@ async def mark_referral_rewarded(invited_id: int, chat_id: int) -> None:
     await db.commit()
 
 
+async def get_unrewarded_referral(invited_id: int) -> Optional[dict]:
+    """
+    Самое раннее невыплаченное приглашение этого пользователя (любой источник).
+    Используется, чтобы заплатить пригласившему, когда новичок докажет активность.
+    """
+    db = await get_db()
+    async with db.execute(
+        "SELECT * FROM referrals WHERE invited_id = ? AND rewarded = 0 "
+        "ORDER BY id ASC LIMIT 1",
+        (invited_id,),
+    ) as cur:
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def mark_all_referrals_rewarded(invited_id: int) -> None:
+    """Помечаем все приглашения этого новичка как выплаченные (платим один раз)."""
+    db = await get_db()
+    await db.execute(
+        "UPDATE referrals SET rewarded = 1 WHERE invited_id = ?", (invited_id,)
+    )
+    await db.commit()
+
+
 # ── Goals ────────────────────────────────────────────────────────────────────
 
 async def add_referral_goal(chat_id: int, invites_required: int,

@@ -18,7 +18,7 @@ from database import (
 from keyboards import invite_keyboard, welcome_keyboard
 from services import (
     award_daily, register_bot_referral, register_chat_referral,
-    claim_dungeon_reward, balance_of,
+    claim_dungeon_reward, balance_of, reward_referrer_on_progress,
 )
 from utils import (
     calculate_rank, get_rank_label, get_rank_title,
@@ -27,6 +27,7 @@ from utils import (
     WELCOME_DEFAULT, HELP_MSG, START_MSG, BOTFATHER_COMMANDS,
     INVITE_MSG, DAILY_MSG, DAILY_DONE_MSG, RULES_DEFAULT, INVITE_JOIN_MSG,
     DUNGEON_AD_HINT, DUNGEON_CLAIMED_MSG, DUNGEON_TOPUP_MSG, DUNGEON_DONE_MSG,
+    DUNGEON_MILESTONE_MSG, DUNGEON_PRIVATE_MSG,
     RANK_UP_MSG, EARN_MSG, format_mana, get_config,
 )
 from utils.media import answer_with_banner
@@ -282,7 +283,8 @@ async def cmd_daily(message: Message) -> None:
 
 # ── /dungeon — ежедневное подземелье (бесплатная руда + реклама в профиле) ──────
 
-def _dungeon_text(user, status: str, base: int, ad: int, has_ad: bool, balance: int) -> str:
+def _dungeon_text(user, status: str, base: int, ad: int, has_ad: bool,
+                  balance: int, streak: int = 0, milestone_bonus: int = 0) -> str:
     cfg = get_config()
     full = cfg.daily_dungeon_base + cfg.daily_dungeon_ad_bonus
     bot_tag = f"@{cfg.bot_username}" if cfg.bot_username else "@этого_бота"
@@ -295,11 +297,13 @@ def _dungeon_text(user, status: str, base: int, ad: int, has_ad: bool, balance: 
         ad_line = f" (база {base} + реклама {ad})" if ad else ""
         text = DUNGEON_CLAIMED_MSG.format(
             mention=mention_html(user), total=total, ad_line=ad_line,
-            balance=format_mana(balance),
+            balance=format_mana(balance), streak=streak,
         )
     else:  # already
-        text = DUNGEON_DONE_MSG.format(balance=format_mana(balance))
+        text = DUNGEON_DONE_MSG.format(balance=format_mana(balance), streak=streak)
 
+    if milestone_bonus:
+        text += DUNGEON_MILESTONE_MSG.format(bonus=format_mana(milestone_bonus))
     if not has_ad:
         text += "\n" + DUNGEON_AD_HINT.format(
             full=full, ad=cfg.daily_dungeon_ad_bonus, bot=bot_tag
@@ -326,10 +330,18 @@ async def cmd_dungeon(message: Message, bot: Bot) -> None:
     user = message.from_user
     if not user:
         return
-    status, base, ad, has_ad = await claim_dungeon_reward(bot, user.id, message.chat.id)
+    # Только в чатах: команды и награды видят другие → бесплатная реклама бота.
+    if message.chat.type not in ("group", "supergroup"):
+        await message.answer(
+            DUNGEON_PRIVATE_MSG, parse_mode="HTML", disable_web_page_preview=True
+        )
+        return
+    status, base, ad, has_ad, streak, milestone = await claim_dungeon_reward(
+        bot, user.id, message.chat.id
+    )
     balance = await balance_of(user.id)
     await message.answer(
-        _dungeon_text(user, status, base, ad, has_ad, balance),
+        _dungeon_text(user, status, base, ad, has_ad, balance, streak, milestone),
         parse_mode="HTML",
         disable_web_page_preview=True,
         reply_markup=_dungeon_keyboard(user.id, has_ad),
@@ -347,7 +359,9 @@ async def cb_dungeon_check(call: CallbackQuery, bot: Bot) -> None:
         return
 
     chat_id = call.message.chat.id if call.message else 0
-    status, base, ad, has_ad = await claim_dungeon_reward(bot, call.from_user.id, chat_id)
+    status, base, ad, has_ad, streak, milestone = await claim_dungeon_reward(
+        bot, call.from_user.id, chat_id
+    )
     balance = await balance_of(call.from_user.id)
 
     if status == "topup":
@@ -366,7 +380,8 @@ async def cb_dungeon_check(call: CallbackQuery, bot: Bot) -> None:
     if call.message:
         try:
             await call.message.edit_text(
-                _dungeon_text(call.from_user, status, base, ad, has_ad, balance),
+                _dungeon_text(call.from_user, status, base, ad, has_ad,
+                              balance, streak, milestone),
                 parse_mode="HTML",
                 disable_web_page_preview=True,
                 reply_markup=_dungeon_keyboard(call.from_user.id, has_ad),
@@ -453,6 +468,11 @@ async def _sync_rank(message: Message, user_id: int, chat_id: int, messages: int
     new_rank = calculate_rank(messages)
     if new_rank != old_rank:
         await update_user_rank(user_id, chat_id, new_rank)
+        if old_rank == "E":
+            try:
+                await reward_referrer_on_progress(message.bot, user_id)
+            except Exception:
+                pass
         try:
             await message.answer(
                 RANK_UP_MSG.format(

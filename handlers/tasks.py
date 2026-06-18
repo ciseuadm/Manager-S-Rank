@@ -282,6 +282,7 @@ async def cb_redeem(call: CallbackQuery, bot: Bot) -> None:
 
 ACHIEVEMENT_NAMES = {
     "rank_a_top100": "👑 Первая сотня ранга A",
+    "dungeon_streak_30": "🏆 Покоритель Подземелий (30 дней подряд)",
 }
 
 

@@ -27,14 +27,20 @@ class Config:
     mana_per_message: int = 1
     mana_message_cooldown: int = 60      # секунд между начислениями за сообщения
     mana_daily_bonus: int = 0            # /daily даёт только опыт; руду даёт /dungeon
-    mana_invite_bonus: int = 200
+    # Реферальная руда теперь платится НЕ за вход, а когда приглашённый докажет
+    # активность (первое повышение ранга). Это отсекает «слепую» накрутку.
+    mana_invite_bonus: int = 0
+    mana_referral_rankup: int = 50       # инвайтеру, когда приглашённый поднял ранг E→D
     mana_transfer_fee_pct: int = 5       # комиссия казны при /transfer
 
     # ── Ежедневное подземелье (бесплатный крючок) ────────────────────────────
-    # /dungeon раз в день: база + бонус за рекламу бота в описании профиля.
-    # 25 + 25 = до 50 руды/день → за 30 дней до 1500 руды бесплатно.
+    # /dungeon раз в день (ТОЛЬКО в чатах — бесплатная реклама): база + бонус
+    # за рекламу бота в описании профиля. 25 + 25 = до 50 руды/день.
     daily_dungeon_base: int = 25
     daily_dungeon_ad_bonus: int = 25
+    # Стрик: чек-ин подряд. На 30-й день — единоразовая награда (руда + тег).
+    dungeon_streak_milestone: int = 30
+    dungeon_streak_reward: int = 1000
 
     # ── Referrals / VIP ─────────────────────────────────────────────────────
     vip_invite_threshold: int = 50       # приглашений в бота для VIP-доступа
@@ -133,10 +139,13 @@ def load_config() -> Config:
         mana_per_message=_get_int("MANA_PER_MESSAGE", 1),
         mana_message_cooldown=_get_int("MANA_MESSAGE_COOLDOWN", 60),
         mana_daily_bonus=_get_int("MANA_DAILY_BONUS", 0),
-        mana_invite_bonus=_get_int("MANA_INVITE_BONUS", 200),
+        mana_invite_bonus=_get_int("MANA_INVITE_BONUS", 0),
+        mana_referral_rankup=_get_int("MANA_REFERRAL_RANKUP", 50),
         mana_transfer_fee_pct=_get_int("MANA_TRANSFER_FEE_PCT", 5),
         daily_dungeon_base=_get_int("DAILY_DUNGEON_BASE", 25),
         daily_dungeon_ad_bonus=_get_int("DAILY_DUNGEON_AD_BONUS", 25),
+        dungeon_streak_milestone=_get_int("DUNGEON_STREAK_MILESTONE", 30),
+        dungeon_streak_reward=_get_int("DUNGEON_STREAK_REWARD", 1000),
         vip_invite_threshold=_get_int("VIP_INVITE_THRESHOLD", 50),
         vip_chat_link=os.getenv("VIP_CHAT_LINK", ""),
         mana_per_rub=_get_int("MANA_PER_RUB", 50),

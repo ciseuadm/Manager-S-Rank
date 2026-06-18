@@ -18,6 +18,7 @@ from .referrals import (
     add_referral, count_referrals, count_bot_referrals,
     add_referral_goal, get_referral_goals, deactivate_goal,
     set_chat_role, get_chat_role, mark_referral_rewarded,
+    get_unrewarded_referral, mark_all_referrals_rewarded,
 )
 from .ads import (
     create_campaign, get_active_campaigns, get_all_campaigns, get_campaign,
@@ -54,6 +55,7 @@ __all__ = [
     "add_referral", "count_referrals", "count_bot_referrals",
     "add_referral_goal", "get_referral_goals", "deactivate_goal",
     "set_chat_role", "get_chat_role", "mark_referral_rewarded",
+    "get_unrewarded_referral", "mark_all_referrals_rewarded",
     # ads
     "create_campaign", "get_active_campaigns", "get_all_campaigns", "get_campaign",
     "set_campaign_status", "delete_campaign", "mark_campaign_sent", "log_impression",

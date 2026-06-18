@@ -11,8 +11,12 @@ from aiogram import Bot
 from database import (
     add_mana, spend_mana, get_wallet, get_wallet_balance,
     can_reward_message, mark_message_reward, claim_dungeon,
+    award_achievement,
 )
 from utils import get_config
+
+# Код ачивки за 30-дневный стрик подземелья (уникальный тег для профиля).
+STREAK_30_ACHIEVEMENT = "dungeon_streak_30"
 
 
 # Разовый бонус руды при достижении нового ранга.
@@ -70,17 +74,26 @@ async def user_has_bot_ad(bot: Bot, user_id: int) -> bool:
 
 async def claim_dungeon_reward(
     bot: Bot, user_id: int, chat_id: int = 0
-) -> tuple[str, int, int, bool]:
+) -> tuple[str, int, int, bool, int, int]:
     """
-    Сбор ежедневного подземелья с проверкой рекламы в профиле.
-    Возвращает (status, base_granted, ad_granted, has_ad).
+    Сбор ежедневного подземелья с проверкой рекламы в профиле и стриком.
+
+    Возвращает (status, base_granted, ad_granted, has_ad, streak, milestone_bonus),
+    где milestone_bonus > 0 ровно в тот сбор, когда стрик впервые достиг вехи
+    (тогда же выдаётся единоразовая руда + уникальная ачивка-тег).
     """
     cfg = get_config()
     has_ad = await user_has_bot_ad(bot, user_id)
-    status, base, ad = await claim_dungeon(
-        user_id, has_ad, cfg.daily_dungeon_base, cfg.daily_dungeon_ad_bonus, chat_id
+    status, base, ad, streak, milestone_hit = await claim_dungeon(
+        user_id, has_ad, cfg.daily_dungeon_base, cfg.daily_dungeon_ad_bonus,
+        chat_id, cfg.dungeon_streak_milestone,
     )
-    return status, base, ad, has_ad
+    milestone_bonus = 0
+    if milestone_hit and cfg.dungeon_streak_reward > 0:
+        milestone_bonus = cfg.dungeon_streak_reward
+        await add_mana(user_id, milestone_bonus, "dungeon_streak", chat_id=chat_id)
+        await award_achievement(user_id, STREAK_30_ACHIEVEMENT)
+    return status, base, ad, has_ad, streak, milestone_bonus
 
 
 async def award_invite(user_id: int, chat_id: int) -> int:

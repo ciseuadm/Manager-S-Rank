@@ -176,6 +176,11 @@ _NEW_COLUMNS = {
         # сегодня бонус за рекламу бота в описании профиля.
         "dungeon_date": "TEXT",
         "dungeon_ad_bonus": "INTEGER DEFAULT 0",
+        # Стрик чек-инов: текущая серия дней подряд, рекорд и флаг выдачи
+        # единоразовой награды за 30-дневный стрик.
+        "dungeon_streak": "INTEGER DEFAULT 0",
+        "dungeon_streak_best": "INTEGER DEFAULT 0",
+        "dungeon_streak_30": "INTEGER DEFAULT 0",
     },
 }
 

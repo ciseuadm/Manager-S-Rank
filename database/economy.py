@@ -96,40 +96,58 @@ async def revert_mana(user_id: int, amount: int, reason: str,
 
 
 async def claim_dungeon(
-    user_id: int, has_ad: bool, base: int, ad_bonus: int, chat_id: int = 0
-) -> tuple[str, int, int]:
+    user_id: int, has_ad: bool, base: int, ad_bonus: int,
+    chat_id: int = 0, milestone_days: int = 30,
+) -> tuple[str, int, int, int, bool]:
     """
     Ежедневный сбор «подземелья» (раз в UTC-сутки, глобально по user_id).
 
     Логика:
       • первый сбор за день → base (+ ad_bonus, если в профиле есть реклама);
+        одновременно обновляется стрик (серия дней подряд);
       • если уже собрал базу, но рекламы тогда не было, а теперь появилась —
         до-выдаём ad_bonus (top-up) в тот же день;
       • иначе → already.
 
-    Возвращает (status, base_granted, ad_granted), status ∈
-      'claimed' | 'topup' | 'already'.
+    Возвращает (status, base_granted, ad_granted, streak, milestone_hit), где
+      status ∈ 'claimed' | 'topup' | 'already',
+      streak — актуальная серия дней подряд,
+      milestone_hit — True ровно в тот сбор, когда стрик впервые достиг
+        `milestone_days` (флаг dungeon_streak_30 проставляется атомарно).
     """
-    today = datetime.utcnow().date().isoformat()
+    today_d = datetime.utcnow().date()
+    today = today_d.isoformat()
+    yesterday = (today_d - timedelta(days=1)).isoformat()
+
     await get_wallet(user_id)
     db = await get_db()
     async with db.execute(
-        "SELECT dungeon_date, dungeon_ad_bonus FROM wallets WHERE user_id = ?",
+        "SELECT dungeon_date, dungeon_ad_bonus, dungeon_streak, "
+        "dungeon_streak_best, dungeon_streak_30 FROM wallets WHERE user_id = ?",
         (user_id,),
     ) as cur:
         row = await cur.fetchone()
     last_date = row["dungeon_date"] if row else None
     ad_given = (row["dungeon_ad_bonus"] if row else 0) or 0
+    streak = (row["dungeon_streak"] if row else 0) or 0
+    best = (row["dungeon_streak_best"] if row else 0) or 0
+    milestone_done = (row["dungeon_streak_30"] if row else 0) or 0
 
     if last_date != today:
+        streak = streak + 1 if last_date == yesterday else 1
+        best = max(best, streak)
+        milestone_hit = bool(milestone_days) and streak >= milestone_days and not milestone_done
+        new_flag = 1 if (milestone_done or milestone_hit) else 0
         ad_part = ad_bonus if has_ad else 0
         await db.execute(
-            "UPDATE wallets SET dungeon_date = ?, dungeon_ad_bonus = ? WHERE user_id = ?",
-            (today, 1 if has_ad else 0, user_id),
+            "UPDATE wallets SET dungeon_date = ?, dungeon_ad_bonus = ?, "
+            "dungeon_streak = ?, dungeon_streak_best = ?, dungeon_streak_30 = ? "
+            "WHERE user_id = ?",
+            (today, 1 if has_ad else 0, streak, best, new_flag, user_id),
         )
         await db.commit()
         await add_mana(user_id, base + ad_part, "dungeon", chat_id=chat_id)
-        return "claimed", base, ad_part
+        return "claimed", base, ad_part, streak, milestone_hit
 
     if not ad_given and has_ad:
         await db.execute(
@@ -137,9 +155,9 @@ async def claim_dungeon(
         )
         await db.commit()
         await add_mana(user_id, ad_bonus, "dungeon_ad", chat_id=chat_id)
-        return "topup", 0, ad_bonus
+        return "topup", 0, ad_bonus, streak, False
 
-    return "already", 0, 0
+    return "already", 0, 0, streak, False
 
 
 async def can_reward_message(user_id: int, cooldown_seconds: int) -> bool:

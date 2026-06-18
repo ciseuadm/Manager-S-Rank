@@ -6,6 +6,7 @@ from .economy import (
 )
 from .referral import (
     register_bot_referral, register_chat_referral, vip_status,
+    reward_referrer_on_progress,
 )
 from .ads_scheduler import send_due_ads, send_campaign_now, send_campaign
 from .tasks import (
@@ -22,6 +23,7 @@ __all__ = [
     "transfer_mana", "balance_of", "wallet_of", "RANK_UP_BONUS",
     "claim_dungeon_reward", "user_has_bot_ad",
     "register_bot_referral", "register_chat_referral", "vip_status",
+    "reward_referrer_on_progress",
     "send_due_ads", "send_campaign_now", "send_campaign",
     "reward_for_revenue", "mana_to_usd_cents", "mana_to_rub", "list_available_tasks",
     "check_and_credit_subscription", "recheck_subscriptions",

@@ -14,6 +14,7 @@ from loguru import logger
 from database import (
     add_referral, count_referrals, count_bot_referrals,
     get_referral_goals, set_chat_role, add_mana, credit_invite,
+    get_unrewarded_referral, mark_all_referrals_rewarded,
 )
 from utils import get_config, mention_html_raw, format_mana
 
@@ -53,13 +54,23 @@ async def register_bot_referral(bot: Bot, inviter_id: int, invited_id: int) -> N
         await add_mana(inviter_id, cfg.mana_invite_bonus, "invite_bot", ref_id=str(invited_id))
 
     after = before + 1
-    # Notify the inviter privately about progress / reward.
+    # Notify the inviter privately about progress. Награда за приглашение
+    # начисляется НЕ за вход, а когда новичок впервые поднимет ранг (E→D) —
+    # это отсекает накрутку «мёртвыми» аккаунтами.
+    reward_line = (
+        f"Начислено <b>{format_mana(cfg.mana_invite_bonus)}</b>.\n"
+        if cfg.mana_invite_bonus > 0
+        else (
+            f"Награда <b>{format_mana(cfg.mana_referral_rankup)}</b> придёт, когда "
+            f"новичок поднимет свой первый ранг (докажет, что он живой).\n"
+        )
+    )
     try:
         await bot.send_message(
             inviter_id,
             f"⚔️ По твоей ссылке пришёл новый охотник!\n"
-            f"Начислено <b>{format_mana(cfg.mana_invite_bonus)}</b>.\n"
-            f"Всего приглашено в бота: <b>{after}</b>"
+            + reward_line
+            + f"Всего приглашено в бота: <b>{after}</b>"
             + (
                 f"  (до VIP: {max(0, cfg.vip_invite_threshold - after)})"
                 if after < cfg.vip_invite_threshold else ""
@@ -146,6 +157,43 @@ async def _check_goals(bot: Bot, inviter_id: int, chat_id: int,
                     )
                 except Exception:
                     pass
+
+
+REF_RANKUP_MSG = (
+    "💎 <b>ТВОЙ РЕКРУТ ОКРЕП!</b>\n\n"
+    "Охотник, которого ты привёл в Систему, поднял свой первый ранг.\n"
+    "За доказанную вербовку начислено <b>{reward}</b>.\n\n"
+    "<i>Зови сильных — Система платит за тех, кто остаётся.</i>"
+)
+
+
+async def reward_referrer_on_progress(bot: Bot, invited_id: int) -> None:
+    """
+    Платит пригласившему разовую награду, когда приглашённый впервые повышает
+    ранг (доказывает активность). Вызывается из обработчика повышения ранга.
+    Платим один раз на новичка, даже если у него несколько источников-приглашений.
+    """
+    cfg = get_config()
+    reward = cfg.mana_referral_rankup
+    if reward <= 0:
+        return
+    ref = await get_unrewarded_referral(invited_id)
+    if not ref:
+        return
+    inviter_id = ref["inviter_id"]
+    # Помечаем сразу, чтобы гонка повышений не заплатила дважды.
+    await mark_all_referrals_rewarded(invited_id)
+    if inviter_id == invited_id:
+        return
+    await add_mana(inviter_id, reward, "ref_rankup", ref_id=str(invited_id))
+    try:
+        await bot.send_message(
+            inviter_id,
+            REF_RANKUP_MSG.format(reward=format_mana(reward)),
+            parse_mode="HTML",
+        )
+    except Exception:
+        pass
 
 
 async def vip_status(inviter_id: int) -> tuple[int, int, bool]:

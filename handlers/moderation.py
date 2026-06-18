@@ -13,7 +13,7 @@ from database import (
     get_blacklist_words, increment_stat,
 )
 from filters import analyze_message, flood_tracker
-from services import award_message, award_rank_up
+from services import award_message, award_rank_up, reward_referrer_on_progress
 from utils import (
     calculate_rank, get_rank_label, get_rank_title,
     RANK_UP_MSG, WARN_MSG, MUTE_AUTO_MSG, BAN_AUTO_MSG,
@@ -185,6 +185,12 @@ async def _update_rank(message: Message, user_id: int, chat_id: int, bot: Bot) -
             bonus = await award_rank_up(user_id, chat_id, new_rank)
         except Exception:
             pass
+        # Первое повышение (E→что угодно) → платим пригласившему за живого рекрута.
+        if old_rank == "E":
+            try:
+                await reward_referrer_on_progress(bot, user_id)
+            except Exception:
+                pass
         try:
             user = message.from_user
             rank_up_text = RANK_UP_MSG.format(
