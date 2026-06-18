@@ -69,13 +69,11 @@ class Config:
     bot_channel_id: Optional[int] = None
     bot_username: str = ""               # заполняется на старте из get_me
 
-    # ── Cursor-мост (управление проектом из бота через Cursor SDK) ───────────
-    # Ключ берётся из .env (CURSOR_API_KEY). Без него мост просто выключен —
-    # бот работает как обычно. Локальный агент запускается в папке этого проекта.
+    # ── Cursor-мост (Cloud Agents API → GitHub-репозиторий проекта) ───────────
     cursor_api_key: str = ""
-    # ID моделей под кнопки. По умолчанию — «auto» (Cursor сам выбирает ИИ).
-    # Реальные ID можно подсмотреть командой /cursormodels и при желании
-    # переопределить через .env, если дефолтные не совпадут с твоим аккаунтом.
+    cursor_repo_url: str = "https://github.com/ciseuadm/Manager-S-Rank"
+    cursor_repo_ref: str = "main"
+    cursor_auto_pr: bool = True          # открывать PR после правок агента
     cursor_model_sonnet: str = "claude-sonnet-4-6"
     cursor_model_opus: str = "claude-opus-4-8"
 
@@ -146,6 +144,9 @@ def load_config() -> Config:
         payments_enabled=_get_bool("PAYMENTS_ENABLED", True),
         bot_channel_id=bot_channel_id,
         cursor_api_key=os.getenv("CURSOR_API_KEY", "").strip(),
+        cursor_repo_url=os.getenv("CURSOR_REPO_URL", "https://github.com/ciseuadm/Manager-S-Rank").strip(),
+        cursor_repo_ref=os.getenv("CURSOR_REPO_REF", "main").strip(),
+        cursor_auto_pr=_get_bool("CURSOR_AUTO_PR", True),
         cursor_model_sonnet=os.getenv("CURSOR_MODEL_SONNET", "claude-sonnet-4-6").strip(),
         cursor_model_opus=os.getenv("CURSOR_MODEL_OPUS", "claude-opus-4-8").strip(),
         backup_hour=_get_int("BACKUP_HOUR", 4),

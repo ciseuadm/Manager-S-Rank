@@ -167,12 +167,17 @@ async def on_startup(bot: Bot, config) -> None:
     config.bot_username = me.username or ""
     set_config(config)
     cursor_bridge.configure(
-        config.cursor_api_key, config.cursor_model_sonnet, config.cursor_model_opus
+        config.cursor_api_key,
+        config.cursor_repo_url,
+        config.cursor_repo_ref,
+        config.cursor_auto_pr,
+        config.cursor_model_sonnet,
+        config.cursor_model_opus,
     )
     if cursor_bridge.available():
-        logger.info("Cursor bridge: configured (/cursor available to owner)")
+        logger.info("Cursor cloud bridge: configured (/cursor available to owner)")
     else:
-        logger.info("Cursor bridge: disabled (no CURSOR_API_KEY or cursor-sdk)")
+        logger.info("Cursor bridge: disabled (no CURSOR_API_KEY)")
     try:
         await setup_commands(bot, config.owner_id)
     except Exception as e:

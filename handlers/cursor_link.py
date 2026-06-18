@@ -6,8 +6,9 @@
   /cursormodels  — показать реальные ID доступных моделей
 
 Когда мост включён, ЛЮБОЕ обычное текстовое сообщение владельца (не команда)
-уходит задачей агенту Cursor в этот проект. По завершении ответ возвращается
-сюда же с подписью «Ответ от Курсора». Агент держит один диалог на сессию —
+уходит облачному агенту Cursor в GitHub-репозиторий проекта. По завершении
+ответ (и ссылка на PR при правках) возвращается сюда с подписью
+«Ответ от Курсора». Агент держит один диалог на сессию —
 кнопка «Новый диалог» начинает с чистого листа.
 """
 import asyncio
@@ -45,6 +46,18 @@ router.callback_query.filter(OwnerPrivate())
 
 # ── Клавиатура панели ─────────────────────────────────────────────────────────
 
+def _cfg_bridge() -> None:
+    cfg = get_config()
+    bridge.configure(
+        cfg.cursor_api_key,
+        cfg.cursor_repo_url,
+        cfg.cursor_repo_ref,
+        cfg.cursor_auto_pr,
+        cfg.cursor_model_sonnet,
+        cfg.cursor_model_opus,
+    )
+
+
 def _panel_kb() -> InlineKeyboardBuilder:
     b = InlineKeyboardBuilder()
     for ch in MODEL_CHOICES:
@@ -63,8 +76,9 @@ def _panel_text() -> str:
     return (
         "🛰 <b>СВЯЗЬ С КУРСОРОМ</b>\n\n"
         + bridge.status_text()
-        + "\n\n<i>Пиши задачу обычным сообщением — она уйдёт агенту в этот проект. "
-        "Ответ вернётся сюда с подписью «Ответ от Курсора».</i>\n"
+        + "\n\n<i>Пиши задачу обычным сообщением — она уйдёт облачному агенту Cursor "
+        "в репозиторий проекта. Ответ (и ссылка на PR, если были правки) "
+        "вернётся сюда с подписью «Ответ от Курсора».</i>\n"
         "Команды можно слать как обычно (начинаются с «/»), они мост не трогают."
     )
 
@@ -73,8 +87,7 @@ def _panel_text() -> str:
 
 @router.message(Command("cursor", "курсор"))
 async def cmd_cursor(message: Message) -> None:
-    cfg = get_config()
-    bridge.configure(cfg.cursor_api_key, cfg.cursor_model_sonnet, cfg.cursor_model_opus)
+    _cfg_bridge()
 
     if not bridge.available():
         await message.answer(
@@ -98,8 +111,7 @@ async def cmd_cursoroff(message: Message) -> None:
 
 @router.message(Command("cursormodels"))
 async def cmd_cursormodels(message: Message) -> None:
-    cfg = get_config()
-    bridge.configure(cfg.cursor_api_key, cfg.cursor_model_sonnet, cfg.cursor_model_opus)
+    _cfg_bridge()
     if not bridge.available():
         await message.answer(bridge.status_text(), parse_mode="HTML", disable_web_page_preview=True)
         return
@@ -190,6 +202,7 @@ async def _process(message: Message, prompt: str) -> None:
 
 @router.message(BridgeInbox(), StateFilter(None), F.chat.type == "private")
 async def on_bridge_message(message: Message) -> None:
+    _cfg_bridge()
     prompt = (message.text or message.caption or "").strip()
     if not prompt:
         return
