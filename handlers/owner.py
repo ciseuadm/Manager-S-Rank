@@ -15,6 +15,7 @@ from database import (
 from keyboards import owner_keyboard
 from services import broadcast
 from utils import is_owner, format_mana, escape_html
+from utils.media import answer_with_banner
 
 router = Router()
 
@@ -96,7 +97,9 @@ async def _chats_text() -> str:
 
 @router.message(Command("owner", "panel"))
 async def cmd_owner(message: Message) -> None:
-    await message.answer(PANEL_MSG, parse_mode="HTML", reply_markup=owner_keyboard())
+    await answer_with_banner(
+        message, "owner", PANEL_MSG, reply_markup=owner_keyboard()
+    )
 
 
 # ── /gstats ──────────────────────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ from database import (
 )
 from keyboards import settings_keyboard
 from utils import SETTINGS_MSG, is_chat_admin, require_admin, escape_html
+from utils.media import answer_with_banner
 
 router = Router()
 
@@ -37,9 +38,10 @@ async def cmd_settings(message: Message, bot: Bot) -> None:
     if not await _check_admin(message, bot):
         return
     settings = await get_chat_settings(message.chat.id)
-    await message.answer(
+    await answer_with_banner(
+        message,
+        "settings",
         SETTINGS_MSG.format(chat_title=message.chat.title or ""),
-        parse_mode="HTML",
         reply_markup=settings_keyboard(settings),
     )
 

@@ -24,6 +24,7 @@ from utils import (
     INVITE_MSG, DAILY_MSG, DAILY_DONE_MSG, RULES_DEFAULT, INVITE_JOIN_MSG,
     RANK_UP_MSG, EARN_MSG, format_mana, get_config,
 )
+from utils.media import answer_with_banner
 
 router = Router()
 
@@ -47,9 +48,12 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot) -> None:
                 pass
 
     # Маркетинговый «крючок» из приветствия: t.me/bot?start=earn
-    text = EARN_MSG if payload == "earn" else START_MSG
+    if payload == "earn":
+        banner, text = "earn", EARN_MSG
+    else:
+        banner, text = "start", START_MSG
     try:
-        await message.answer(text, parse_mode="HTML")
+        await answer_with_banner(message, banner, text)
     except Exception as e:
         logger.warning(f"[START] send failed: {e}")
 
@@ -59,7 +63,7 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot) -> None:
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
     try:
-        await message.answer(HELP_MSG, parse_mode="HTML")
+        await answer_with_banner(message, "help", HELP_MSG)
     except Exception as e:
         logger.warning(f"[HELP] send failed: {e}")
 
@@ -230,7 +234,7 @@ async def cmd_stats(message: Message) -> None:
 async def cmd_rules(message: Message) -> None:
     settings = await get_chat_settings(message.chat.id)
     rules = settings.get("rules") or RULES_DEFAULT
-    await message.answer(rules, parse_mode="HTML")
+    await answer_with_banner(message, "rules", rules)
 
 
 # ── /daily — ежедневный бонус (маркетинг: удержание) ────────────────────────────
@@ -394,9 +398,13 @@ async def cb_welcome_rules(call: CallbackQuery) -> None:
     rules = settings.get("rules") or RULES_DEFAULT
     try:
         await call.answer()
-        notify = await call.message.answer(rules, parse_mode="HTML")
-        await asyncio.sleep(30)
-        await notify.delete()
+        notify = await answer_with_banner(call.message, "rules", rules)
+        if notify:
+            await asyncio.sleep(30)
+            try:
+                await notify.delete()
+            except Exception:
+                pass
     except Exception:
         pass
 

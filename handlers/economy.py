@@ -15,6 +15,7 @@ from utils import (
     WALLET_MSG, TRANSFER_OK_MSG, TRANSFER_HELP, MANA_TOP_MSG,
     SHOP_MSG, COMING_SOON_MSG, VIP_PROGRESS_MSG, VIP_OPEN_MSG,
 )
+from utils.media import answer_with_banner
 
 router = Router()
 
@@ -103,9 +104,10 @@ async def cmd_shop(message: Message) -> None:
         return
     balance = await balance_of(user.id)
     _, _, is_vip = await vip_status(user.id)
-    await message.answer(
+    await answer_with_banner(
+        message,
+        "shop",
         SHOP_MSG.format(balance=format_mana(balance)),
-        parse_mode="HTML",
         reply_markup=shop_keyboard(is_vip),
     )
 

@@ -13,6 +13,7 @@ from loguru import logger
 
 from database import add_mana, add_payment, get_payment_by_charge
 from utils import get_config, format_mana
+from utils.media import answer_with_banner
 
 router = Router()
 
@@ -58,12 +59,13 @@ async def cmd_buy(message: Message) -> None:
             "Открой меня в ЛС и отправь /buy."
         )
         return
-    await message.answer(
+    await answer_with_banner(
+        message,
+        "buy",
         "🔹 <b>МАГАЗИН МАНА-РУДЫ</b>\n\n"
         "Пополни запас руды за Telegram Stars ⭐.\n"
         "Чем больше пакет — тем выгоднее курс.\n\n"
         "Выбери пакет:",
-        parse_mode="HTML",
         reply_markup=_buy_keyboard(),
     )
 

@@ -30,6 +30,7 @@ from services import (
     user_streak, streak_multiplier,
 )
 from utils import is_owner, get_config, format_mana, mention_html_raw
+from utils.media import answer_with_banner
 
 router = Router()
 
@@ -124,8 +125,11 @@ async def cmd_tasks(message: Message) -> None:
     if not message.from_user:
         return
     text, kb = await _render_tasks(message.from_user.id)
-    await message.answer(text, parse_mode="HTML", reply_markup=kb.as_markup(),
-                         disable_web_page_preview=True)
+    await answer_with_banner(
+        message, "tasks", text,
+        reply_markup=kb.as_markup(),
+        disable_web_page_preview=True,
+    )
 
 
 @router.callback_query(F.data == "task:list")
