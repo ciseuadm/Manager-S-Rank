@@ -138,33 +138,44 @@ def analyze_message(
     text: str,
     words: list[str],
     settings: dict,
+    whitelist: Optional[list[str]] = None,
 ) -> list[tuple[str, str]]:
     """
     Returns a list of (violation_type, matched_word) tuples.
     violation_type: 'nsfw' | 'insult' | 'politics' | 'spam' | 'links' | 'invite' | 'caps' | 'blacklist'
+
+    whitelist — слова, которые НЕ считаются нарушением (гасят ложные срабатывания
+    антимата/NSFW; не влияют на ссылки/инвайты/blacklist).
     """
     violations: list[tuple[str, str]] = []
     if not text:
         return violations
 
+    wl = {w.lower() for w in (whitelist or [])}
+
+    def _wl_ok(matched: str) -> bool:
+        """True, если совпадение разрешено белым списком."""
+        m = (matched or "").lower()
+        return m in wl or any(w in m or m in w for w in wl)
+
     if settings.get("filter_nsfw", 1):
         match = check_nsfw(text)
-        if match:
+        if match and not _wl_ok(match):
             violations.append(("nsfw", match))
 
     if settings.get("filter_insults", 1):
         match = check_insult(text)
-        if match:
+        if match and not _wl_ok(match):
             violations.append(("insult", match))
 
     if settings.get("filter_politics", 1):
         match = check_politics(text)
-        if match:
+        if match and not _wl_ok(match):
             violations.append(("politics", match))
 
     if settings.get("filter_spam", 1):
         match = check_spam(text)
-        if match:
+        if match and not _wl_ok(match):
             violations.append(("spam", match))
 
     if settings.get("filter_links", 0):

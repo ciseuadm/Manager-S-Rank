@@ -77,6 +77,16 @@ def settings_keyboard(settings: dict) -> InlineKeyboardMarkup:
         ),
     )
     builder.row(
+        InlineKeyboardButton(
+            text=f"{toggle(settings.get('night_mode', 0))} Ночной режим",
+            callback_data="toggle:night_mode",
+        ),
+        InlineKeyboardButton(
+            text=f"{toggle(settings.get('block_forwards', 0))} Блок пересылок",
+            callback_data="toggle:block_forwards",
+        ),
+    )
+    builder.row(
         InlineKeyboardButton(text="📝 Приветствие", callback_data="set:welcome_msg"),
     )
     builder.row(
@@ -102,13 +112,19 @@ def invite_keyboard(link: str, share_text: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def welcome_keyboard(bot_username: str) -> InlineKeyboardMarkup:
+def welcome_keyboard(
+    bot_username: str, extra_text: str = "", extra_url: str = ""
+) -> InlineKeyboardMarkup:
     """
     Маркетинговый «крючок» в приветствии новичка: ведём в личку бота,
     чтобы человек начал фармить руду, и даём быстрый доступ к правилам.
+    extra_text/extra_url — кастомная кнопка чата (настраивается /setwelcomebtn).
     """
     base = f"https://t.me/{bot_username}"
     builder = InlineKeyboardBuilder()
+    if extra_text and extra_url:
+        url = extra_url if extra_url.startswith("http") else f"https://{extra_url}"
+        builder.row(InlineKeyboardButton(text=extra_text[:48], url=url))
     builder.row(
         InlineKeyboardButton(text="⚡ Открыть Систему", url=f"{base}?start=welcome"),
     )

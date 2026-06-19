@@ -7,12 +7,13 @@ from .models import (
     mute_user, unmute_user, clear_expired_mutes, ban_user, unban_user,
     add_blacklist_word, remove_blacklist_word, get_blacklist_words,
     increment_stat, get_chat_stats, get_top_users,
+    get_top_moderators, get_chat_activity_summary,
     get_all_chats, get_global_stats, remove_chat,
 )
 from .economy import (
     get_wallet, get_wallet_balance, add_mana, spend_mana, revert_mana,
     can_reward_message, mark_message_reward, get_top_mana, get_mana_emission,
-    mana_emission_by_reason,
+    mana_emission_by_reason, got_reason_today,
     claim_dungeon, get_wallet_rank, set_wallet_rank,
     get_xp, add_xp, sub_xp,
 )
@@ -40,6 +41,20 @@ from .payments import (
     add_payment, get_payment_by_charge, payments_total,
     set_payment_status, get_user_last_payment,
 )
+from .triggers import (
+    add_trigger, remove_trigger, list_triggers, count_triggers,
+)
+from .notes import (
+    save_note, get_note, delete_note, list_notes,
+)
+from .antimat import (
+    add_whitelist_word, remove_whitelist_word, get_whitelist_words,
+)
+from .social import (
+    create_clan, get_clan, get_clan_by_name, get_user_clan, join_clan,
+    leave_clan, clan_member_count, add_clan_treasury, top_clans,
+    get_marriage, create_marriage, divorce,
+)
 from .tasks import (
     create_task, get_task, get_active_tasks, list_tasks, set_task_active,
     task_completions_count, get_completion, get_completed_task_ids,
@@ -62,11 +77,12 @@ __all__ = [
     "mute_user", "unmute_user", "clear_expired_mutes", "ban_user", "unban_user",
     "add_blacklist_word", "remove_blacklist_word", "get_blacklist_words",
     "increment_stat", "get_chat_stats", "get_top_users",
+    "get_top_moderators", "get_chat_activity_summary",
     "get_all_chats", "get_global_stats", "remove_chat",
     # economy
     "get_wallet", "get_wallet_balance", "add_mana", "spend_mana", "revert_mana",
     "can_reward_message", "mark_message_reward", "get_top_mana", "get_mana_emission",
-    "mana_emission_by_reason",
+    "mana_emission_by_reason", "got_reason_today",
     "claim_dungeon", "get_wallet_rank", "set_wallet_rank",
     # referrals
     "add_referral", "count_referrals", "count_bot_referrals",
@@ -89,6 +105,13 @@ __all__ = [
     # payments
     "add_payment", "get_payment_by_charge", "payments_total",
     "set_payment_status", "get_user_last_payment",
+    # triggers / notes / antimat / social
+    "add_trigger", "remove_trigger", "list_triggers", "count_triggers",
+    "save_note", "get_note", "delete_note", "list_notes",
+    "add_whitelist_word", "remove_whitelist_word", "get_whitelist_words",
+    "create_clan", "get_clan", "get_clan_by_name", "get_user_clan", "join_clan",
+    "leave_clan", "clan_member_count", "add_clan_treasury", "top_clans",
+    "get_marriage", "create_marriage", "divorce",
     # tasks
     "create_task", "get_task", "get_active_tasks", "list_tasks", "set_task_active",
     "task_completions_count", "get_completion", "get_completed_task_ids",

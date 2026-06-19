@@ -10,7 +10,7 @@ from loguru import logger
 from database import (
     get_or_create_user, add_warn, remove_warn, reset_warns,
     get_warn_history, mute_user, unmute_user, ban_user, unban_user,
-    get_chat_settings,
+    get_chat_settings, get_top_moderators, get_chat_activity_summary,
 )
 from utils import parse_time_arg, require_admin, escape_html, mention_html_raw, WARN_MSG
 from utils.tg_safe import safe_mute, safe_unmute, safe_ban, safe_unban, safe_kick
@@ -309,6 +309,35 @@ async def cmd_kick(message: Message, bot: Bot) -> None:
         f"👟 <b>{mention}</b> выгнан из чата.",
         parse_mode="HTML",
     )
+
+
+# ── /modstats — лог-аналитика модерации для админа ───────────────────────────
+
+@router.message(Command("modstats", "chatlog"), F.chat.type.in_({"group", "supergroup"}))
+async def cmd_modstats(message: Message, bot: Bot) -> None:
+    if not await _check_admin(message, bot):
+        return
+    chat_id = message.chat.id
+    week = await get_chat_activity_summary(chat_id, 7)
+    mods = await get_top_moderators(chat_id, 30, 10)
+
+    lines = [
+        "📊 <b>АНАЛИТИКА ПОДЗЕМЕЛЬЯ (7 дней)</b>\n",
+        f"👥 Охотников в базе: <b>{week['members']}</b>",
+        f"💬 Сообщений: <b>{week['messages']}</b>",
+        f"🗑 Удалено нарушений: <b>{week['deleted']}</b>",
+        f"⚠️ Выдано варнов: <b>{week['warns']}</b>",
+        f"🚫 Банов: <b>{week['bans']}</b>",
+    ]
+    if mods:
+        lines.append("\n<b>🛡 Топ модераторов (30 дней):</b>")
+        for i, m in enumerate(mods, 1):
+            who = mention_html_raw(m["admin_id"], "модератор")
+            lines.append(f"{i}. {who} — ⚠️{m['warns']} · 🚫{m['bans']}")
+    else:
+        lines.append("\n<i>За 30 дней ручных наказаний не было — Система справляется сама.</i>")
+
+    await message.answer("\n".join(lines), parse_mode="HTML")
 
 
 # ── /del ───────────────────────────────────────────────────────────────────────

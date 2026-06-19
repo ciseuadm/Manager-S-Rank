@@ -230,6 +230,18 @@ async def mark_message_reward(user_id: int) -> None:
     await db.commit()
 
 
+async def got_reason_today(user_id: int, reason: str) -> bool:
+    """True, если пользователю сегодня (UTC) уже начисляли руду по этой причине.
+    Используется как дневной лимит для социальных наград (рейды и т.п.)."""
+    db = await get_db()
+    async with db.execute(
+        "SELECT 1 FROM mana_tx WHERE user_id = ? AND reason = ? "
+        "AND date(created_at) = date('now') LIMIT 1",
+        (user_id, reason),
+    ) as cur:
+        return await cur.fetchone() is not None
+
+
 async def get_top_mana(limit: int = 10) -> list[dict]:
     db = await get_db()
     async with db.execute(

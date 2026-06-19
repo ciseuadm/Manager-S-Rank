@@ -13,10 +13,13 @@ from .cursor_link import router as cursor_router
 from .fun import router as fun_router
 from .menu import router as menu_router
 from .chat_lifecycle import router as chat_lifecycle_router
+from .triggers import router as triggers_router
+from .social import router as social_router
 
 __all__ = [
     "moderation_router", "admin_router", "user_router", "settings_router",
     "owner_router", "economy_router", "referral_router", "payments_router",
     "ads_router", "sponsors_router", "tasks_router", "cursor_router", "fun_router",
-    "menu_router", "chat_lifecycle_router", "set_bot_id",
+    "menu_router", "chat_lifecycle_router", "triggers_router", "social_router",
+    "set_bot_id",
 ]

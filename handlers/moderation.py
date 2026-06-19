@@ -10,16 +10,34 @@ from loguru import logger
 from database import (
     get_chat_settings, get_or_create_user, increment_messages,
     add_warn, mute_user, ban_user,
-    get_blacklist_words, increment_stat,
+    get_blacklist_words, increment_stat, get_whitelist_words,
 )
 from filters import analyze_message, flood_tracker
 from services import award_message
+from services.triggers import match_trigger
 from utils import (
     WARN_MSG, MUTE_AUTO_MSG, BAN_AUTO_MSG,
     DELETE_NOTIFY, FLOOD_WARN, VIOLATION_REASONS,
     mention_html, is_owner,
 )
 from utils.tg_safe import safe_mute, safe_ban, delete_later
+
+
+def _night_active(settings: dict) -> bool:
+    """Активен ли ночной режим сейчас (по UTC-часу окна [start, end))."""
+    if not settings.get("night_mode", 0):
+        return False
+    start = int(settings.get("night_start", 23) or 0)
+    end = int(settings.get("night_end", 7) or 0)
+    hour = datetime.utcnow().hour
+    if start == end:
+        return False
+    if start < end:
+        return start <= hour < end
+    return hour >= start or hour < end  # окно через полночь
+
+
+_night_notified: dict[int, float] = {}
 
 router = Router()
 BOT_USER_ID: int = 0  # filled on startup
@@ -68,6 +86,39 @@ async def on_group_message(message: Message, bot: Bot) -> None:
         full_name=user.full_name,
     )
 
+    # ── Ночной режим: чат «спит», сообщения не-админов удаляются ────────────────
+    if _night_active(settings):
+        try:
+            await message.delete()
+            await increment_stat(message.chat.id, "deleted")
+        except Exception:
+            pass
+        import time as _t
+        now = _t.monotonic()
+        if now - _night_notified.get(message.chat.id, 0.0) > 600:
+            _night_notified[message.chat.id] = now
+            try:
+                notify = await message.answer(
+                    "🌙 <b>Ночной режим Системы.</b> Подземелье спит — "
+                    "сообщения принимаются только от админов. Утром продолжим, охотник.",
+                    parse_mode="HTML",
+                )
+                delete_later(notify, 15)
+            except Exception:
+                pass
+        return
+
+    # ── Блокировка пересланных сообщений (анти-реклама) ─────────────────────────
+    if settings.get("block_forwards", 0) and (
+        getattr(message, "forward_origin", None) or message.forward_date
+    ):
+        try:
+            await message.delete()
+            await increment_stat(message.chat.id, "deleted")
+        except Exception:
+            pass
+        return
+
     # ── Anti-flood ────────────────────────────────────────────────────────────
     if settings.get("antiflood", 1):
         if flood_tracker.is_flood(user.id, message.chat.id):
@@ -100,7 +151,8 @@ async def on_group_message(message: Message, bot: Bot) -> None:
     # ── Content analysis ──────────────────────────────────────────────────────
     text = message.text or message.caption or ""
     blacklist = await get_blacklist_words(message.chat.id)
-    violations = analyze_message(text, blacklist, settings)
+    whitelist = await get_whitelist_words(message.chat.id)
+    violations = analyze_message(text, blacklist, settings, whitelist)
 
     if violations:
         vtype, matched = violations[0]
@@ -155,6 +207,16 @@ async def on_group_message(message: Message, bot: Bot) -> None:
     # ── Update message count & rank ───────────────────────────────────────────
     await _update_rank(message, user.id, message.chat.id, bot)
 
+    # ── Триггеры/кастом-команды: бот сам отвечает на слово/фразу ────────────────
+    if text:
+        try:
+            response = await match_trigger(message.chat.id, text)
+            if response:
+                await message.reply(response, parse_mode="HTML",
+                                    disable_web_page_preview=True)
+        except Exception:
+            pass
+
 
 # ── Модерация отредактированных сообщений ────────────────────────────────────
 # Нарушитель может отправить чистый текст и затем вписать в него мат/ссылку/инвайт.
@@ -175,7 +237,8 @@ async def on_group_edited(message: Message, bot: Bot) -> None:
     settings = await get_chat_settings(message.chat.id)
     text = message.text or message.caption or ""
     blacklist = await get_blacklist_words(message.chat.id)
-    violations = analyze_message(text, blacklist, settings)
+    whitelist = await get_whitelist_words(message.chat.id)
+    violations = analyze_message(text, blacklist, settings, whitelist)
     if not violations:
         return
 

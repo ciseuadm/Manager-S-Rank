@@ -201,6 +201,76 @@ CREATE TABLE IF NOT EXISTS referral_goal_awards (
     awarded_at TEXT DEFAULT (datetime('now')),
     PRIMARY KEY (goal_id, user_id)
 );
+
+-- ── Триггеры/кастом-команды чата (липкая фича уровня Iris) ───────────────────
+-- Админ задаёт «ключ -> ответ»: бот сам отвечает на слово/фразу. match_type:
+-- 'contains' (вхождение), 'exact' (полное совпадение), 'word' (отдельное слово).
+CREATE TABLE IF NOT EXISTS chat_triggers (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id     INTEGER,
+    pattern     TEXT,
+    response    TEXT,
+    match_type  TEXT DEFAULT 'contains',
+    created_by  INTEGER DEFAULT 0,
+    created_at  TEXT DEFAULT (datetime('now')),
+    UNIQUE(chat_id, pattern)
+);
+CREATE INDEX IF NOT EXISTS idx_triggers_chat ON chat_triggers(chat_id);
+
+-- ── Заметки чата (/save имя текст -> /note имя) ──────────────────────────────
+-- Быстрый FAQ/правила/мемы по ключу. Один и тот же ключ перезаписывается.
+CREATE TABLE IF NOT EXISTS chat_notes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id     INTEGER,
+    name        TEXT,
+    content     TEXT,
+    created_by  INTEGER DEFAULT 0,
+    created_at  TEXT DEFAULT (datetime('now')),
+    UNIQUE(chat_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_notes_chat ON chat_notes(chat_id);
+
+-- ── Белый список к антимату ──────────────────────────────────────────────────
+-- Слова, которые НЕ должны считаться нарушением (ложные срабатывания фильтров).
+CREATE TABLE IF NOT EXISTS antimat_whitelist (
+    chat_id    INTEGER,
+    word       TEXT,
+    added_by   INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (chat_id, word)
+);
+
+-- ── Кланы (социальные объединения внутри чата поверх руды) ───────────────────
+-- Клан создаётся охотником, члены вступают, складчина руды в казну клана.
+CREATE TABLE IF NOT EXISTS clans (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id     INTEGER,
+    name        TEXT,
+    leader_id   INTEGER,
+    treasury    INTEGER DEFAULT 0,
+    created_at  TEXT DEFAULT (datetime('now')),
+    UNIQUE(chat_id, name)
+);
+CREATE TABLE IF NOT EXISTS clan_members (
+    clan_id    INTEGER,
+    user_id    INTEGER,
+    chat_id    INTEGER,
+    joined_at  TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (chat_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_clan_members ON clan_members(clan_id);
+
+-- ── Браки охотников (RP-механика вовлечения; статус в карточке) ──────────────
+-- Симметричная пара. Храним по min/max user_id, чтобы пара была уникальной.
+CREATE TABLE IF NOT EXISTS marriages (
+    chat_id    INTEGER,
+    user_a     INTEGER,
+    user_b     INTEGER,
+    created_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (chat_id, user_a, user_b)
+);
+CREATE INDEX IF NOT EXISTS idx_marriage_a ON marriages(chat_id, user_a);
+CREATE INDEX IF NOT EXISTS idx_marriage_b ON marriages(chat_id, user_b);
 """
 
 
@@ -215,6 +285,20 @@ _NEW_COLUMNS = {
         # по базе cas.chat). Капчи нет — «живость» проверяется D-ранговым гейтом.
         "antiraid": "INTEGER DEFAULT 0",
         "cas_ban": "INTEGER DEFAULT 0",
+        # Кнопка в приветствии новичка (опционально): текст + ссылка.
+        "welcome_btn_text": "TEXT DEFAULT ''",
+        "welcome_btn_url": "TEXT DEFAULT ''",
+        # Ночной режим: в окне [night_start, night_end) по UTC сообщения не-админов
+        # удаляются (чат «спит»). Включается тогглом night_mode.
+        "night_mode": "INTEGER DEFAULT 0",
+        "night_start": "INTEGER DEFAULT 23",
+        "night_end": "INTEGER DEFAULT 7",
+        # Медиа-контроль: удалять пересланные сообщения от не-админов (анти-реклама).
+        "block_forwards": "INTEGER DEFAULT 0",
+        # Pro-чат (платная подписка за Stars): расширенная аналитика/лимиты.
+        # pro_until — ISO-срок действия (NULL = выключено).
+        "pro": "INTEGER DEFAULT 0",
+        "pro_until": "TEXT",
     },
     "wallets": {
         # Баланс единый (wallets.mana). Колонки ниже зарезервированы под будущую

@@ -553,8 +553,8 @@ async def on_new_member(event: ChatMemberUpdated) -> None:
     if user.is_bot:
         return
 
-    # Функции доверия (если включены админом): CAS-бан, анти-рейд, капча.
-    # Если новичок обработан деструктивно (бан/рейд-мут/капча) — без приветствия.
+    # Функции доверия (если включены админом): CAS-бан, анти-рейд.
+    # Если новичок обработан деструктивно (бан/рейд-мут) — без приветствия.
     from services import screen_newcomer
     try:
         if await screen_newcomer(event.bot, event):
@@ -585,7 +585,11 @@ async def on_new_member(event: ChatMemberUpdated) -> None:
         await event.answer(
             text,
             parse_mode="HTML",
-            reply_markup=welcome_keyboard(bot_username) if bot_username else None,
+            reply_markup=welcome_keyboard(
+                bot_username,
+                settings.get("welcome_btn_text", "") or "",
+                settings.get("welcome_btn_url", "") or "",
+            ) if bot_username else None,
         )
     except Exception:
         pass

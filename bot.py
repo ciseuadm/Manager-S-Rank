@@ -24,7 +24,8 @@ from handlers import (
     moderation_router, admin_router, user_router, settings_router,
     owner_router, economy_router, referral_router, payments_router,
     ads_router, sponsors_router, tasks_router, cursor_router, fun_router,
-    menu_router, chat_lifecycle_router, set_bot_id,
+    menu_router, chat_lifecycle_router, triggers_router, social_router,
+    set_bot_id,
 )
 from services.cursor_bridge import bridge as cursor_bridge
 from middlewares import ThrottleMiddleware, SubGateMiddleware, EmojiFallbackMiddleware
@@ -86,7 +87,13 @@ PUBLIC_COMMANDS = [
     BotCommand(command="stats", description="📈 Статистика чата"),
     BotCommand(command="rules", description="📜 Правила чата"),
     BotCommand(command="oracle", description="🔮 Предсказание Системы"),
-    BotCommand(command="duel", description="⚔️ Дуэль охотников"),
+    BotCommand(command="duel", description="⚔️ Дуэль (на ставку: /duel 100)"),
+    BotCommand(command="raid", description="🐉 Групповой рейд за рудой"),
+    BotCommand(command="clan", description="🏛 Мой клан"),
+    BotCommand(command="clans", description="🏆 Топ кланов чата"),
+    BotCommand(command="marry", description="💍 Брак охотников (ответом)"),
+    BotCommand(command="note", description="📝 Показать заметку чата"),
+    BotCommand(command="notes", description="📒 Заметки чата"),
     BotCommand(command="dice", description="🎲 Бросок кубика"),
     BotCommand(command="help", description="📋 Список команд"),
     BotCommand(command="id", description="🆔 Узнать свой ID"),
@@ -129,9 +136,18 @@ ADMIN_ONLY_COMMANDS = [
     BotCommand(command="rmword", description="➖ Убрать слово"),
     BotCommand(command="words", description="📋 Чёрный список"),
     BotCommand(command="setwelcome", description="📝 Изменить приветствие"),
+    BotCommand(command="setwelcomebtn", description="🔘 Кнопка в приветствии"),
     BotCommand(command="setrules", description="📜 Изменить правила"),
     BotCommand(command="setgoal", description="🎯 Цель приглашений"),
     BotCommand(command="goals", description="🎯 Список целей"),
+    BotCommand(command="addtrigger", description="⚡ Добавить триггер"),
+    BotCommand(command="deltrigger", description="➖ Удалить триггер"),
+    BotCommand(command="triggers", description="📋 Триггеры чата"),
+    BotCommand(command="save", description="💾 Сохранить заметку"),
+    BotCommand(command="delnote", description="🗑 Удалить заметку"),
+    BotCommand(command="allowword", description="✅ Слово в белый список"),
+    BotCommand(command="allowlist", description="📋 Белый список антимата"),
+    BotCommand(command="modstats", description="📊 Аналитика модерации"),
     BotCommand(command="ads", description="📢 Реклама в чате on/off"),
 ]
 
@@ -278,6 +294,8 @@ async def main() -> None:
     dp.include_router(sponsors_router)
     dp.include_router(ads_router)
     dp.include_router(admin_router)
+    dp.include_router(triggers_router)
+    dp.include_router(social_router)
     dp.include_router(user_router)
     dp.include_router(settings_router)
     dp.include_router(economy_router)

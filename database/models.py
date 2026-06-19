@@ -360,6 +360,55 @@ async def get_chat_stats(chat_id: int, days: int = 7) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+async def get_top_moderators(chat_id: int, days: int = 30, limit: int = 10) -> list[dict]:
+    """
+    Топ модераторов чата по активности: число выданных варнов и банов за период.
+    Источник — журналы warn_history / ban_history (admin_id = кто наказал).
+    """
+    db = await get_db()
+    async with db.execute(
+        """SELECT admin_id,
+                  SUM(warns) AS warns, SUM(bans) AS bans, SUM(warns + bans) AS total
+           FROM (
+               SELECT admin_id, COUNT(*) AS warns, 0 AS bans FROM warn_history
+                 WHERE chat_id = ? AND created_at >= datetime('now', ? || ' days')
+                       AND admin_id != 0
+                 GROUP BY admin_id
+               UNION ALL
+               SELECT admin_id, 0 AS warns, COUNT(*) AS bans FROM ban_history
+                 WHERE chat_id = ? AND created_at >= datetime('now', ? || ' days')
+                       AND admin_id != 0
+                 GROUP BY admin_id
+           )
+           GROUP BY admin_id
+           ORDER BY total DESC LIMIT ?""",
+        (chat_id, f"-{days}", chat_id, f"-{days}", limit),
+    ) as cur:
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def get_chat_activity_summary(chat_id: int, days: int = 7) -> dict:
+    """Сводка активности чата за период: сообщения/удаления/варны/баны + актив."""
+    db = await get_db()
+    async with db.execute(
+        """SELECT COALESCE(SUM(messages),0) AS messages,
+                  COALESCE(SUM(deleted),0) AS deleted,
+                  COALESCE(SUM(warns_given),0) AS warns,
+                  COALESCE(SUM(bans),0) AS bans
+           FROM chat_stats
+           WHERE chat_id = ? AND date >= date('now', ? || ' days')""",
+        (chat_id, f"-{days}"),
+    ) as cur:
+        row = await cur.fetchone()
+    summary = dict(row) if row else {"messages": 0, "deleted": 0, "warns": 0, "bans": 0}
+    async with db.execute(
+        "SELECT COUNT(*) AS c FROM users WHERE chat_id = ? AND is_banned = 0", (chat_id,)
+    ) as cur:
+        summary["members"] = (await cur.fetchone())["c"]
+    return summary
+
+
 # ── Owner: global data ──────────────────────────────────────────────────────────
 
 async def get_all_chats() -> list[dict]:
