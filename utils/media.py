@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import FSInputFile, Message
 from loguru import logger
 
@@ -121,6 +122,11 @@ async def edit_screen(
                 reply_markup=reply_markup,
                 disable_web_page_preview=disable_web_page_preview,
             )
+    except TelegramBadRequest as e:
+        # «Обновить» без изменений — ничего не делаем, НЕ плодим новое сообщение.
+        if "message is not modified" in str(e).lower():
+            return message
+        logger.warning(f"[EDIT_SCREEN] edit failed: {e}")
     except Exception as e:
         logger.warning(f"[EDIT_SCREEN] edit failed: {e}")
     # Фото с длинным текстом или ошибка → новое сообщение.

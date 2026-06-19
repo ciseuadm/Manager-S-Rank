@@ -132,30 +132,30 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="👑 Привилегии", callback_data="menu:perks"),
         InlineKeyboardButton(text="❓ Помощь", callback_data="menu:help"),
     )
-    b.row(InlineKeyboardButton(text="✖ Закрыть", callback_data="menu:close"))
     return b.as_markup()
 
 
 def menu_nav_keyboard(*extra_rows: list[InlineKeyboardButton]) -> InlineKeyboardMarkup:
-    """Низ подэкрана меню: пользовательские кнопки + «Назад в меню» / «Закрыть»."""
+    """Низ подэкрана меню: пользовательские кнопки + «Назад» (в главное меню)."""
     b = InlineKeyboardBuilder()
     for row in extra_rows:
         if row:
             b.row(*row)
-    b.row(
-        InlineKeyboardButton(text="⬅️ В меню", callback_data="menu:root"),
-        InlineKeyboardButton(text="✖ Закрыть", callback_data="menu:close"),
-    )
+    b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:root"))
     return b.as_markup()
 
 
 def shop_keyboard(is_vip: bool = False, from_menu: bool = False) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    # По одной кнопке в ряд: длинные подписи («Обменять на подарки») не обрезаются
+    # на узких экранах телефонов.
     builder.row(
         InlineKeyboardButton(text="💎 Купить руду за ⭐", callback_data="shop:buy"),
     )
     builder.row(
         InlineKeyboardButton(text="🎁 Обменять на подарки", callback_data="shop:gifts"),
+    )
+    builder.row(
         InlineKeyboardButton(text="👑 Telegram Premium", callback_data="shop:premium"),
     )
     builder.row(
@@ -167,27 +167,22 @@ def shop_keyboard(is_vip: bool = False, from_menu: bool = False) -> InlineKeyboa
             callback_data="shop:vip",
         ),
     )
-    if from_menu:
-        builder.row(
-            InlineKeyboardButton(text="⬅️ В меню", callback_data="menu:root"),
-            InlineKeyboardButton(text="✖ Закрыть", callback_data="shop:close"),
-        )
-    else:
-        builder.row(
-            InlineKeyboardButton(text="✖ Закрыть", callback_data="shop:close"),
-        )
+    # «Назад»: из меню — в главное меню, как команда — тоже в хаб (а не «закрыть»).
+    builder.row(
+        InlineKeyboardButton(
+            text="⬅️ Назад" if from_menu else "⬅️ В меню",
+            callback_data="menu:root",
+        ),
+    )
     return builder.as_markup()
 
 
 def shop_back_keyboard(extra: list[InlineKeyboardButton] | None = None) -> InlineKeyboardMarkup:
-    """Низ подэкрана магазина: доп.кнопки + «В магазин» / «Закрыть»."""
+    """Низ подэкрана магазина: доп.кнопки + «Назад» (в магазин)."""
     b = InlineKeyboardBuilder()
     if extra:
         b.row(*extra)
-    b.row(
-        InlineKeyboardButton(text="⬅️ В магазин", callback_data="shop:root"),
-        InlineKeyboardButton(text="✖ Закрыть", callback_data="shop:close"),
-    )
+    b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="shop:root"))
     return b.as_markup()
 
 

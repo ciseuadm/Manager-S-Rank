@@ -19,7 +19,9 @@ from utils import (
 )
 
 from .economy import award_rank_up
-from .referral import reward_agent_on_rank
+from .referral import reward_agent_on_rank, notify_vip_unlocked
+
+_S_IDX = rank_index("S")
 
 
 RANKUP_DM = (
@@ -98,6 +100,13 @@ async def sync_rank(bot: Bot, user_id: int, *, announce: bool = True) -> str:
     # Агент-вербовщик получает награду за новую веху своего рекрута.
     try:
         await reward_agent_on_rank(bot, user_id, new_rank)
+    except Exception:
+        pass
+
+    # VIP-зал открывается по достижению ранга S — шлём приглашение в момент входа.
+    try:
+        if rank_index(old_rank) < _S_IDX <= rank_index(new_rank):
+            await notify_vip_unlocked(bot, user_id)
     except Exception:
         pass
 

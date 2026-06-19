@@ -6,6 +6,7 @@ from .economy import (
 )
 from .referral import (
     register_bot_referral, register_chat_referral, vip_status,
+    vip_rank_status, notify_vip_unlocked,
     reward_agent_on_rank, AGENT_REWARDS,
 )
 from .ranks import sync_rank, sync_task_rank, rank_card, get_rank_score
@@ -32,6 +33,7 @@ __all__ = [
     "transfer_mana", "balance_of", "wallet_of", "RANK_UP_BONUS",
     "claim_dungeon_reward", "user_has_bot_ad",
     "register_bot_referral", "register_chat_referral", "vip_status",
+    "vip_rank_status", "notify_vip_unlocked",
     "reward_agent_on_rank", "AGENT_REWARDS",
     "sync_rank", "sync_task_rank", "rank_card", "get_rank_score",
     "send_due_ads", "send_campaign_now", "send_campaign",

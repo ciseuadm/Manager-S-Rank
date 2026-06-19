@@ -37,12 +37,23 @@ from utils import (
     get_rank_label, perks_lines, has_privileges,
     rank_perks, calculate_rank,
 )
-from utils.media import answer_with_banner
+from utils.media import answer_with_banner, edit_screen
 
 router = Router()
 
 
 # ── Клавиатуры ───────────────────────────────────────────────────────────────
+
+def _tasks_nav(b: InlineKeyboardBuilder) -> InlineKeyboardBuilder:
+    """Низ экрана заданий: «Обновить» + «Назад» (в главное меню).
+
+    Кнопки общие для всех вариантов экрана и для входа из /tasks и из /menu —
+    поэтому при «Обновить» навигация и премиум-эмодзи не теряются.
+    """
+    b.row(InlineKeyboardButton(text="🔄 Обновить", callback_data="task:list"))
+    b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:root"))
+    return b
+
 
 def _tasks_keyboard(tasks: list[dict]) -> InlineKeyboardBuilder:
     b = InlineKeyboardBuilder()
@@ -56,8 +67,7 @@ def _tasks_keyboard(tasks: list[dict]) -> InlineKeyboardBuilder:
             text=f"🔍 Проверить и забрать +{t['reward']} руды",
             callback_data=f"task:check:{t['id']}",
         ))
-    b.row(InlineKeyboardButton(text="🔄 Обновить", callback_data="task:list"))
-    return b
+    return _tasks_nav(b)
 
 
 def _redeem_keyboard(balance: int) -> InlineKeyboardBuilder:
@@ -96,6 +106,11 @@ async def _render_tasks(user_id: int) -> tuple[str, InlineKeyboardBuilder]:
 
     limit_line = f"{ce('tasks')} Заданий сегодня: <b>{done_today}/{limit}</b>\n"
 
+    ref_line = (
+        f"{ce('agent')} Зови охотников по своей ссылке — Система платит рудой за "
+        "<b>каждое</b> их повышение ранга. Открой «Доход / друзья» в /menu.\n"
+    )
+
     # Лимит исчерпан — на сегодня всё.
     if remaining <= 0:
         text = (
@@ -105,25 +120,22 @@ async def _render_tasks(user_id: int) -> tuple[str, InlineKeyboardBuilder]:
             f"{perk_line}"
             f"\n{ce('alarm')} Новые задания откроются завтра. Подними ранг (S/SS/SSS) — "
             "и за каждое задание будешь получать больше руды: /privileges\n\n"
-            f"{ce('gift')} Обменять руду: /redeem  ·  {ce('trophy')} Достижения: /achievements"
+            f"{ref_line}"
         )
-        b = InlineKeyboardBuilder()
-        b.row(InlineKeyboardButton(text="🔄 Обновить", callback_data="task:list"))
-        return text, b
+        return text, _tasks_nav(InlineKeyboardBuilder())
 
     # Лимит ещё есть, но активных невыполненных заданий нет.
     if not tasks:
         text = (
             f"{ce('tasks')} <b>ЗАДАНИЯ ГИЛЬДИИ</b>\n\n"
-            f"{ce('info')} Сейчас новых заданий для тебя нет — ты выполнил всё доступное. "
+            f"{ce('alarm')} Сейчас новых заданий для тебя нет — ты выполнил всё доступное. "
             "Система регулярно присылает новые подземелья, загляни позже.\n\n"
             f"{limit_line}"
             f"{ce('coin')} Твой баланс: <b>{format_mana(balance)}</b>\n"
             f"{perk_line}"
+            f"\n{ref_line}"
         )
-        b = InlineKeyboardBuilder()
-        b.row(InlineKeyboardButton(text="🔄 Обновить", callback_data="task:list"))
-        return text, b
+        return text, _tasks_nav(InlineKeyboardBuilder())
 
     text = (
         f"{ce('tasks')} <b>ЗАДАНИЯ ГИЛЬДИИ</b>\n"
@@ -134,8 +146,9 @@ async def _render_tasks(user_id: int) -> tuple[str, InlineKeyboardBuilder]:
         f"{perk_line}\n"
         f"{ce('check')} Подпишись на канал по кнопке.\n"
         f"{ce('check')} Нажми «Проверить» — Система начислит руду.\n"
-        f"{ce('warn')} <b>Не отписывайся</b> от каналов — иначе руда отзывается.\n\n"
-        f"{ce('gift')} Обмен: /redeem  ·  {ce('premium')} Привилегии: /privileges"
+        f"{ce('spark')} Оставайся в каналах заданий — пока ты подписан, Система "
+        "открывает новые задания (руду не забираем).\n\n"
+        f"{ref_line}"
     )
     return text, _tasks_keyboard(tasks)
 
@@ -155,11 +168,7 @@ async def cmd_tasks(message: Message) -> None:
 @router.callback_query(F.data == "task:list")
 async def cb_task_list(call: CallbackQuery) -> None:
     text, kb = await _render_tasks(call.from_user.id)
-    try:
-        await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb.as_markup(),
-                                     disable_web_page_preview=True)
-    except Exception:
-        pass
+    await edit_screen(call.message, text, reply_markup=kb.as_markup())
     await call.answer()
 
 
@@ -203,12 +212,7 @@ async def cb_task_check(call: CallbackQuery, bot: Bot) -> None:
             show_alert=True,
         )
         text, kb = await _render_tasks(call.from_user.id)
-        try:
-            await call.message.edit_text(text, parse_mode="HTML",
-                                         reply_markup=kb.as_markup(),
-                                         disable_web_page_preview=True)
-        except Exception:
-            pass
+        await edit_screen(call.message, text, reply_markup=kb.as_markup())
     elif code == "not_subscribed":
         await call.answer(
             "❌ Подписка не найдена. Подпишись на канал задания и нажми «Проверить» снова.",
@@ -225,12 +229,7 @@ async def cb_task_check(call: CallbackQuery, bot: Bot) -> None:
     # Обновляем список после успешного начисления.
     if code == "credited":
         text, kb = await _render_tasks(call.from_user.id)
-        try:
-            await call.message.edit_text(text, parse_mode="HTML",
-                                         reply_markup=kb.as_markup(),
-                                         disable_web_page_preview=True)
-        except Exception:
-            pass
+        await edit_screen(call.message, text, reply_markup=kb.as_markup())
 
 
 # ── /redeem ──────────────────────────────────────────────────────────────────
@@ -240,10 +239,12 @@ async def cmd_redeem(message: Message) -> None:
     if not message.from_user:
         return
     balance = await balance_of(message.from_user.id)
+    kb = _redeem_keyboard(balance)
+    kb.row(InlineKeyboardButton(text="⬅️ В меню", callback_data="menu:root"))
     await message.answer(
         _redeem_intro(balance),
         parse_mode="HTML",
-        reply_markup=_redeem_keyboard(balance).as_markup(),
+        reply_markup=kb.as_markup(),
     )
 
 

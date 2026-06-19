@@ -17,10 +17,12 @@ from database import (
     get_unrewarded_referral, mark_all_referrals_rewarded,
     get_primary_referral, set_referral_paid_rank,
     get_or_create_guild, guild_rank_counts, set_guild_blocks,
+    get_xp,
 )
 from utils import (
     get_config, mention_html_raw, format_mana,
-    get_rank_label, rank_index,
+    get_rank_label, rank_index, calculate_rank,
+    VIP_RANK_UNLOCK_MSG,
 )
 
 
@@ -294,7 +296,31 @@ async def reward_agent_on_rank(bot: Bot, invited_id: int, new_rank: str) -> None
 
 
 async def vip_status(inviter_id: int) -> tuple[int, int, bool]:
-    """Returns (bot_referrals, threshold, is_vip)."""
+    """Устар.: VIP по числу рефералов. Оставлено для совместимости.
+    Returns (bot_referrals, threshold, is_vip)."""
     cfg = get_config()
     count = await count_bot_referrals(inviter_id)
     return count, cfg.vip_invite_threshold, count >= cfg.vip_invite_threshold
+
+
+_VIP_MIN_IDX = rank_index("S")
+
+
+async def vip_rank_status(user_id: int) -> tuple[str, bool]:
+    """VIP-доступ открыт по достижению ранга S и выше.
+    Returns (rank_id, is_vip)."""
+    rank = calculate_rank(await get_xp(user_id))
+    return rank, rank_index(rank) >= _VIP_MIN_IDX
+
+
+async def notify_vip_unlocked(bot: Bot, user_id: int) -> None:
+    """Отправляет охотнику приглашение в VIP-зал при достижении ранга S.
+    Ссылку добавим позже (cfg.vip_chat_link) — пока шлём аккуратную заглушку."""
+    cfg = get_config()
+    link = cfg.vip_chat_link or "Система откроет вход в ближайшее время."
+    try:
+        await bot.send_message(
+            user_id, VIP_RANK_UNLOCK_MSG.format(link=link), parse_mode="HTML",
+        )
+    except Exception:
+        pass

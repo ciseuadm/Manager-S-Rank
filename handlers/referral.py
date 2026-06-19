@@ -11,13 +11,13 @@ from aiogram.types import Message
 from database import (
     add_referral_goal, get_referral_goals, deactivate_goal,
     get_or_create_guild, set_guild_name, guild_member_count,
-    guild_rank_counts, top_guilds,
+    guild_rank_counts, top_guilds, count_bot_referrals,
 )
-from services import vip_status
+from services import vip_rank_status, AGENT_REWARDS
 from utils import (
     require_admin, get_config, format_mana, escape_html, mention_html,
     rank_index, get_rank_label, RANKS,
-    MYREF_MSG, MYREF_VIP_MSG, SETGOAL_HELP, GOALS_LIST_MSG,
+    MYREF_MSG, SETGOAL_HELP, GOALS_LIST_MSG,
     VIP_PROGRESS_MSG, VIP_OPEN_MSG,
     GUILD_CARD_MSG, GUILD_NO_NAME_HINT, GUILD_RENAMED_MSG, GUILD_NAME_BAD_MSG,
     GUILD_TOP_HEADER, GUILD_TOP_EMPTY,
@@ -44,20 +44,12 @@ async def cmd_myref(message: Message) -> None:
         return
     cfg = get_config()
     link = _bot_ref_link(cfg.bot_username, user.id)
-    count, threshold, is_vip = await vip_status(user.id)
-
-    if is_vip and cfg.vip_chat_link:
-        text = MYREF_VIP_MSG.format(
-            bot_link=link, bot_count=count, vip_link=cfg.vip_chat_link
-        )
-    else:
-        from services import AGENT_REWARDS
-        text = MYREF_MSG.format(
-            bot_link=link,
-            bot_count=count,
-            to_vip=max(0, threshold - count),
-            bonus=format_mana(AGENT_REWARDS.get("D", cfg.mana_referral_rankup)),
-        )
+    count = await count_bot_referrals(user.id)
+    text = MYREF_MSG.format(
+        bot_link=link,
+        bot_count=count,
+        bonus=format_mana(AGENT_REWARDS.get("D", cfg.mana_referral_rankup)),
+    )
     await message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
 
 
@@ -150,13 +142,12 @@ async def cmd_vip(message: Message) -> None:
     if not user:
         return
     cfg = get_config()
-    count, threshold, is_vip = await vip_status(user.id)
-    if is_vip and cfg.vip_chat_link:
-        text = VIP_OPEN_MSG.format(count=count, link=cfg.vip_chat_link)
+    rank, is_vip = await vip_rank_status(user.id)
+    if is_vip:
+        link = cfg.vip_chat_link or "Система откроет вход в ближайшее время."
+        text = VIP_OPEN_MSG.format(link=link)
     else:
-        text = VIP_PROGRESS_MSG.format(
-            threshold=threshold, count=count, left=max(0, threshold - count)
-        )
+        text = VIP_PROGRESS_MSG.format(rank=get_rank_label(rank))
     await message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
 
 

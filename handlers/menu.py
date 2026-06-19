@@ -11,8 +11,8 @@ from aiogram import Router, F, Bot
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
 
-from database import get_or_create_user
-from services import rank_card, balance_of, vip_status, AGENT_REWARDS
+from database import get_or_create_user, count_bot_referrals
+from services import rank_card, balance_of, vip_rank_status, AGENT_REWARDS
 from services.economy import wallet_of
 from keyboards import main_menu_keyboard, menu_nav_keyboard, shop_keyboard
 from utils import (
@@ -113,8 +113,10 @@ async def cb_menu_wallet(call: CallbackQuery) -> None:
         f"{ce('coin')} Баланс: <b>{format_mana(w.get('mana', 0))}</b>\n"
         f"{ce('chartup')} Всего добыто: <b>{format_mana(w.get('total_earned', 0))}</b>\n"
         f"{ce('fire')} Потрачено: <b>{format_mana(w.get('total_spent', 0))}</b>\n\n"
-        f"<i>{ce('tasks')} Больше всего руды дают задания. "
-        f"{ce('gift')} Трать в магазине или меняй на подарки.</i>"
+        f"{ce('tasks')} Больше всего руды дают задания и подземелья.\n"
+        f"{ce('agent')} А ещё руда капает за друзей: зови охотников — и получай "
+        "награду за каждое их повышение ранга («Доход / друзья»).\n\n"
+        f"<i>{ce('gift')} Трать в магазине или меняй на подарки Telegram.</i>"
     )
     extra = [
         InlineKeyboardButton(text="📋 Задания", callback_data="menu:tasks"),
@@ -131,12 +133,13 @@ async def cb_menu_perks(call: CallbackQuery) -> None:
     cfg = get_config()
     lines = [
         f"{ce('premium')} <b>ПРИВИЛЕГИИ ВЫСОКИХ РАНГОВ</b>\n",
-        f"{ce('info')} Достигай ранга S и выше — Система даёт бонусы:\n",
-        f"{ce('trophy')} <b>S</b> — +10% к награде за задание, −2% комиссии перевода",
-        f"{ce('trophy')} <b>SS</b> — +20% к награде, −3% комиссии",
-        f"{ce('crown')} <b>SSS</b> — +35% к награде, −5% комиссии\n",
-        f"{ce('warn')} Дневной лимит заданий одинаков для всех — "
-        f"<b>{cfg.tasks_daily_limit}/день</b>. Ранг повышает НАГРАДУ, а не лимит.",
+        f"{ce('spark')} Достигай ранга S и выше — Система даёт бонусы:\n",
+        f"{ce('trophy')} <b>S</b> — +10% к награде за задание, −2% к комиссии перевода",
+        f"{ce('trophy')} <b>SS</b> — +20% к награде, −3% к комиссии",
+        f"{ce('crown')} <b>SSS</b> — +35% к награде, −5% к комиссии\n",
+        f"{ce('coin')} <b>Что за комиссия?</b> Это небольшой сбор казны Системы, когда "
+        "ты <b>передаёшь руду</b> другому охотнику (перевод). Базовая комиссия — "
+        f"<b>{cfg.mana_transfer_fee_pct}%</b>. Чем выше твой ранг — тем меньше платишь.",
     ]
     await edit_screen(call.message, "\n".join(lines), reply_markup=menu_nav_keyboard())
     await call.answer()
@@ -155,7 +158,7 @@ async def cb_menu_help(call: CallbackQuery) -> None:
 @router.callback_query(F.data == "menu:shop")
 async def cb_menu_shop(call: CallbackQuery) -> None:
     bal = await balance_of(call.from_user.id)
-    _, _, is_vip = await vip_status(call.from_user.id)
+    _, is_vip = await vip_rank_status(call.from_user.id)
     await edit_screen(
         call.message, SHOP_MSG.format(balance=format_mana(bal)),
         reply_markup=shop_keyboard(is_vip, from_menu=True),
@@ -170,10 +173,7 @@ async def cb_menu_gifts(call: CallbackQuery) -> None:
     from utils.redeem_ui import redeem_intro, redeem_keyboard
     bal = await balance_of(call.from_user.id)
     kb = redeem_keyboard(bal)
-    kb.row(
-        InlineKeyboardButton(text="⬅️ В меню", callback_data="menu:root"),
-        InlineKeyboardButton(text="✖ Закрыть", callback_data="menu:close"),
-    )
+    kb.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:root"))
     await edit_screen(call.message, redeem_intro(bal), reply_markup=kb.as_markup())
     await call.answer()
 
@@ -184,10 +184,6 @@ async def cb_menu_gifts(call: CallbackQuery) -> None:
 async def cb_menu_tasks(call: CallbackQuery) -> None:
     from handlers.tasks import _render_tasks
     text, kb = await _render_tasks(call.from_user.id)
-    kb.row(
-        InlineKeyboardButton(text="⬅️ В меню", callback_data="menu:root"),
-        InlineKeyboardButton(text="✖ Закрыть", callback_data="menu:close"),
-    )
     await edit_screen(call.message, text, reply_markup=kb.as_markup())
     await call.answer()
 
@@ -198,18 +194,28 @@ async def cb_menu_tasks(call: CallbackQuery) -> None:
 async def cb_menu_ref(call: CallbackQuery) -> None:
     cfg = get_config()
     link = _bot_ref_link(cfg.bot_username, call.from_user.id)
-    count, threshold, is_vip = await vip_status(call.from_user.id)
-    d = AGENT_REWARDS.get("D", cfg.mana_referral_rankup)
+    invited = await count_bot_referrals(call.from_user.id)
+    r = AGENT_REWARDS
+    block = cfg.agent_milestone_block
     text = (
         f"{ce('agent')} <b>ТВОЙ ДОХОД С ДРУЗЕЙ</b>\n\n"
-        f"{ce('link')} Приглашай охотников по своей ссылке — Система закрепляет их за тобой "
-        "<b>навсегда</b> и платит рудой за <b>каждое</b> повышение их ранга:\n"
-        f"{ce('check')} D +{d} · C +100 · B +200 · A +400 · S +800 руды\n"
-        f"{ce('coin')} Один охотник до S = <b>1550 руды</b>.\n\n"
+        f"{ce('link')} Приглашай охотников по своей ссылке — Система закрепляет их за "
+        "тобой <b>навсегда</b> и платит рудой за <b>каждое</b> повышение их ранга:\n\n"
+        f"{ce('check')} дорос до D — <b>+{r['D']} руды</b>\n"
+        f"{ce('check')} до C — <b>+{r['C']} руды</b>\n"
+        f"{ce('check')} до B — <b>+{r['B']} руды</b>\n"
+        f"{ce('check')} до A — <b>+{r['A']} руды</b>\n"
+        f"{ce('check')} до S — <b>+{r['S']} руды</b>\n\n"
+        f"{ce('crown')} <b>А дальше — за массовость гильдии:</b>\n"
+        f"{ce('trophy')} за каждые {block} охотников ранга SS — "
+        f"<b>+{format_mana(cfg.agent_ss_block_reward)}</b>\n"
+        f"{ce('crown')} за каждые {block} ранга SSS — "
+        f"<b>+{format_mana(cfg.agent_sss_block_reward)}</b>\n\n"
+        f"{ce('coin')} Один охотник, раскачанный до S, приносит тебе "
+        f"<b>{r['D'] + r['C'] + r['B'] + r['A'] + r['S']} руды</b>. "
+        "Он играет — ты получаешь.\n\n"
         f"{ce('link')} Твоя ссылка:\n<code>{escape_html(link)}</code>\n\n"
-        f"{ce('person')} Приглашено: <b>{count}</b>"
-        + (f" · {ce('target')} до VIP осталось <b>{max(0, threshold - count)}</b>" if not is_vip else
-           f" · {ce('premium')} <b>VIP открыт</b>")
+        f"{ce('person')} Уже приглашено: <b>{invited}</b>"
     )
     share_text = (
         "⚡ Заходи в Систему S-Ранг — фарми Мана-руду, расти в рангах "

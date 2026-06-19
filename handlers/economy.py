@@ -10,10 +10,11 @@ from aiogram.types import InlineKeyboardButton
 
 from database import get_top_mana, get_or_create_user
 from services.economy import wallet_of, transfer_mana, balance_of
-from services import vip_status
+from services import vip_rank_status
 from keyboards import shop_keyboard, shop_back_keyboard
 from utils import (
     mention_html, mention_html_raw, escape_html, format_mana, get_config, ce,
+    get_rank_label,
     WALLET_MSG, TRANSFER_OK_MSG, TRANSFER_HELP, MANA_TOP_MSG,
     SHOP_MSG, COMING_SOON_MSG, VIP_PROGRESS_MSG, VIP_OPEN_MSG,
 )
@@ -105,7 +106,7 @@ async def cmd_shop(message: Message) -> None:
     if not user:
         return
     balance = await balance_of(user.id)
-    _, _, is_vip = await vip_status(user.id)
+    _, is_vip = await vip_rank_status(user.id)
     await answer_with_banner(
         message,
         "shop",
@@ -115,7 +116,7 @@ async def cmd_shop(message: Message) -> None:
 
 
 async def _shop_root_markup(user_id: int, from_menu: bool):
-    _, _, is_vip = await vip_status(user_id)
+    _, is_vip = await vip_rank_status(user_id)
     return shop_keyboard(is_vip, from_menu=from_menu)
 
 
@@ -180,13 +181,12 @@ async def cb_shop(call: CallbackQuery) -> None:
         return
 
     if action == "vip":
-        count, threshold, is_vip = await vip_status(call.from_user.id)
-        if is_vip and cfg.vip_chat_link:
-            text = VIP_OPEN_MSG.format(count=count, link=cfg.vip_chat_link)
+        rank, is_vip = await vip_rank_status(call.from_user.id)
+        if is_vip:
+            link = cfg.vip_chat_link or "Система откроет вход в ближайшее время."
+            text = VIP_OPEN_MSG.format(link=link)
         else:
-            text = VIP_PROGRESS_MSG.format(
-                threshold=threshold, count=count, left=max(0, threshold - count)
-            )
+            text = VIP_PROGRESS_MSG.format(rank=get_rank_label(rank))
         await edit_screen(msg, text, reply_markup=shop_back_keyboard())
         await call.answer()
         return
