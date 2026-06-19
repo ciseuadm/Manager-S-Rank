@@ -147,6 +147,25 @@ class Config:
     webapp_url: str = ""                 # СЮДА ВСТАВИТЬ публичный https-адрес Mini App
     webapp_port: int = 8080
 
+    # ── Масштаб (Фаза 6): webhook вместо polling ─────────────────────────────
+    # При росте включи webhook: бот перестаёт «опрашивать» Telegram и принимает
+    # апдейты на публичный https-эндпоинт (меньше задержка, держит больше нагрузки).
+    # Работает на том же aiohttp-сервере, что и Mini App (порт PORT/webapp_port).
+    webhook_enabled: bool = False
+    webhook_url: str = ""                # СЮДА ВСТАВИТЬ публичный https-адрес (без пути), напр. https://app.up.railway.app
+    webhook_path: str = "/webhook"       # путь приёма апдейтов
+    webhook_secret: str = ""             # секрет проверки апдейтов (любая случайная строка)
+
+    # ── PostgreSQL (при росте; по умолчанию SQLite) ──────────────────────────
+    # Если задан DATABASE_URL (postg:// …) — драйвер БД переключится на Postgres
+    # (см. database/db.py). Пока пусто — используется SQLite (db_path).
+    database_url: str = ""               # СЮДА ВСТАВИТЬ postgres://user:pass@host:port/db при переезде
+
+    # ── Локализация (i18n) ───────────────────────────────────────────────────
+    # Язык по умолчанию для текстов бота. RU — основной (лор Solo Leveling),
+    # EN — резервный для англоязычных охотников (utils/i18n.py).
+    default_lang: str = "ru"
+
     # ── Cursor-мост (Cloud Agents API → GitHub-репозиторий проекта) ───────────
     cursor_api_key: str = ""
     cursor_repo_url: str = "https://github.com/ciseuadm/Manager-S-Rank"
@@ -263,6 +282,12 @@ def load_config() -> Config:
         webapp_enabled=_get_bool("WEBAPP_ENABLED", False),
         webapp_url=os.getenv("WEBAPP_URL", "").strip(),
         webapp_port=_get_int("PORT", _get_int("WEBAPP_PORT", 8080)),
+        webhook_enabled=_get_bool("WEBHOOK_ENABLED", False),
+        webhook_url=os.getenv("WEBHOOK_URL", "").strip(),
+        webhook_path=os.getenv("WEBHOOK_PATH", "/webhook").strip() or "/webhook",
+        webhook_secret=os.getenv("WEBHOOK_SECRET", "").strip(),
+        database_url=os.getenv("DATABASE_URL", "").strip(),
+        default_lang=os.getenv("DEFAULT_LANG", "ru").strip().lower() or "ru",
         cursor_api_key=os.getenv("CURSOR_API_KEY", "").strip(),
         cursor_repo_url=os.getenv("CURSOR_REPO_URL", "https://github.com/ciseuadm/Manager-S-Rank").strip(),
         cursor_repo_ref=os.getenv("CURSOR_REPO_REF", "main").strip(),

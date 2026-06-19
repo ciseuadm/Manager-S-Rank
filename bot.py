@@ -214,6 +214,11 @@ async def on_startup(bot: Bot, config) -> None:
     set_owner_id(config.owner_id)
     config.bot_username = me.username or ""
     set_config(config)
+    try:
+        from utils.i18n import set_default_lang
+        set_default_lang(config.default_lang)
+    except Exception:
+        pass
     cursor_bridge.configure(
         config.cursor_api_key,
         config.cursor_repo_url,
@@ -342,14 +347,37 @@ async def main() -> None:
     scheduler = setup_scheduler(bot, config)
     webapp_state: dict = {}
 
+    allowed = [
+        "message", "edited_message", "chat_member",
+        "callback_query", "my_chat_member", "pre_checkout_query",
+    ]
+    use_webhook = bool(config.webhook_enabled and config.webhook_url.startswith("https://"))
+
     async def _startup() -> None:
         await on_startup(bot, config)
         scheduler.start()
-        try:
-            from services.webapp import start_webapp
-            webapp_state["runner"] = await start_webapp(bot)
-        except Exception as e:
-            logger.warning(f"Mini App backend не запущен: {e}")
+        if use_webhook:
+            # Webhook: апдейты приходят на наш https-эндпоинт (меньше задержка,
+            # выше пропускная способность). Mini App живёт в том же app.
+            url = config.webhook_url.rstrip("/") + config.webhook_path
+            await bot.set_webhook(
+                url=url,
+                secret_token=config.webhook_secret or None,
+                allowed_updates=allowed,
+                drop_pending_updates=True,
+            )
+            logger.info(f"Webhook установлен: {url}")
+        else:
+            # Polling: на всякий случай снимаем возможный старый webhook.
+            try:
+                await bot.delete_webhook(drop_pending_updates=False)
+            except Exception:
+                pass
+            try:
+                from services.webapp import start_webapp
+                webapp_state["runner"] = await start_webapp(bot)
+            except Exception as e:
+                logger.warning(f"Mini App backend не запущен: {e}")
 
     async def _shutdown() -> None:
         await on_shutdown(bot, scheduler, webapp_state.get("runner"))
@@ -357,14 +385,31 @@ async def main() -> None:
     dp.startup.register(_startup)
     dp.shutdown.register(_shutdown)
 
-    logger.info("Starting polling...")
-    await dp.start_polling(
-        bot,
-        allowed_updates=[
-            "message", "edited_message", "chat_member",
-            "callback_query", "my_chat_member",
-        ],
-    )
+    if use_webhook:
+        from aiohttp import web
+        from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+        from services.webapp import build_app
+
+        # Один aiohttp-сервер на всё: приём апдейтов + Mini App + healthz.
+        app = build_app(bot)
+        SimpleRequestHandler(
+            dispatcher=dp, bot=bot,
+            secret_token=config.webhook_secret or None,
+        ).register(app, path=config.webhook_path)
+        setup_application(app, dp, bot=bot)
+
+        runner = web.AppRunner(app)
+        await runner.setup()  # триггерит dp startup (set_webhook и пр.)
+        site = web.TCPSite(runner, host="0.0.0.0", port=config.webapp_port)
+        await site.start()
+        logger.info(f"Webhook-сервер слушает :{config.webapp_port}")
+        try:
+            await asyncio.Event().wait()  # держим процесс
+        finally:
+            await runner.cleanup()
+    else:
+        logger.info("Starting polling...")
+        await dp.start_polling(bot, allowed_updates=allowed)
 
 
 if __name__ == "__main__":

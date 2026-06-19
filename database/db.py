@@ -14,6 +14,11 @@ async def get_db() -> aiosqlite.Connection:
 
 
 async def init_db(db_path: str) -> None:
+    # Точка переезда на PostgreSQL (Фаза 6 «при росте»): если задан
+    # config.database_url (postgres://…), здесь подключается PG-драйвер
+    # (например, asyncpg через совместимый адаптер) вместо aiosqlite. Весь
+    # доступ к БД идёт через get_db()/execute, поэтому переключение — точечное.
+    # Пока DATABASE_URL пуст — используется SQLite (текущий путь).
     global _db
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     _db = await aiosqlite.connect(db_path)
