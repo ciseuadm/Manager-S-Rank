@@ -12,7 +12,10 @@ from database import (
     get_warn_history, mute_user, unmute_user, ban_user, unban_user,
     get_chat_settings, get_top_moderators, get_chat_activity_summary,
 )
-from utils import parse_time_arg, require_admin, escape_html, mention_html_raw, WARN_MSG
+from utils import (
+    parse_time_arg, require_admin, escape_html, mention_html_raw, WARN_MSG,
+    get_config, is_chat_pro,
+)
 from utils.tg_safe import safe_mute, safe_unmute, safe_ban, safe_unban, safe_kick
 
 router = Router()
@@ -318,11 +321,18 @@ async def cmd_modstats(message: Message, bot: Bot) -> None:
     if not await _check_admin(message, bot):
         return
     chat_id = message.chat.id
-    week = await get_chat_activity_summary(chat_id, 7)
-    mods = await get_top_moderators(chat_id, 30, 10)
+    cfg = get_config()
+    settings = await get_chat_settings(chat_id)
+    pro = is_chat_pro(settings)
+    # Pro-чат получает более длинное окно аналитики.
+    win = cfg.pro_analytics_days if pro else 7
+    mod_win = cfg.pro_analytics_days if pro else 30
+    week = await get_chat_activity_summary(chat_id, win)
+    mods = await get_top_moderators(chat_id, mod_win, 10)
 
+    badge = " ⭐<b>PRO</b>" if pro else ""
     lines = [
-        "📊 <b>АНАЛИТИКА ПОДЗЕМЕЛЬЯ (7 дней)</b>\n",
+        f"📊 <b>АНАЛИТИКА ПОДЗЕМЕЛЬЯ ({win} дн.)</b>{badge}\n",
         f"👥 Охотников в базе: <b>{week['members']}</b>",
         f"💬 Сообщений: <b>{week['messages']}</b>",
         f"🗑 Удалено нарушений: <b>{week['deleted']}</b>",
@@ -330,12 +340,14 @@ async def cmd_modstats(message: Message, bot: Bot) -> None:
         f"🚫 Банов: <b>{week['bans']}</b>",
     ]
     if mods:
-        lines.append("\n<b>🛡 Топ модераторов (30 дней):</b>")
+        lines.append(f"\n<b>🛡 Топ модераторов ({mod_win} дн.):</b>")
         for i, m in enumerate(mods, 1):
             who = mention_html_raw(m["admin_id"], "модератор")
             lines.append(f"{i}. {who} — ⚠️{m['warns']} · 🚫{m['bans']}")
     else:
-        lines.append("\n<i>За 30 дней ручных наказаний не было — Система справляется сама.</i>")
+        lines.append("\n<i>За период ручных наказаний не было — Система справляется сама.</i>")
+    if not pro:
+        lines.append("\n💡 <i>Pro-чат: аналитика за 90 дней и больше лимитов — /pro</i>")
 
     await message.answer("\n".join(lines), parse_mode="HTML")
 

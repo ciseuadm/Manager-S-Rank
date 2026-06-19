@@ -50,6 +50,19 @@ class Config:
     ad_self_serve_enabled: bool = True
     ad_price_per_sub_stars: int = 1
     ad_min_stars: int = 50
+    # Платный приоритет задания в выдаче /tasks (буст позиции для спонсора).
+    # Доплата к заявке; задание получает priority=task_boost_priority на boost-срок.
+    ad_boost_stars: int = 150
+    task_boost_priority: int = 100
+
+    # ── Pro-чат (платная подписка чата за Stars) ─────────────────────────────
+    # Премиум для чата: расширенная аналитика (/modstats за 90 дней), повышенные
+    # лимиты триггеров/заметок, бейдж. Покупает админ чата; срок — pro_until.
+    pro_chat_enabled: bool = True
+    pro_price_30_stars: int = 150        # 30 дней
+    pro_price_90_stars: int = 350        # 90 дней (выгоднее)
+    pro_triggers_limit: int = 500        # против обычного лимита
+    pro_analytics_days: int = 90
 
     # ── Ежедневное подземелье (бесплатный крючок) ────────────────────────────
     # /dungeon раз в день (ТОЛЬКО в чатах — бесплатная реклама): база + бонус
@@ -118,8 +131,12 @@ class Config:
     # Заготовка: когда будет выбран крипто-бот и получен токен — включить и
     # вписать токен ниже, остальная обвязка экономики уже готова (payout_requests).
     crypto_withdraw_enabled: bool = False
-    crypto_bot_token: str = ""           # СЮДА ВСТАВИТЬ токен крипто-бота (напр. @CryptoBot)
+    crypto_bot_token: str = ""           # СЮДА ВСТАВИТЬ токен крипто-бота Crypto Pay (@CryptoBot → Crypto Pay → Create App)
     crypto_asset: str = "USDT"           # актив для выплат (USDT/TON/…)
+    crypto_api_base: str = "https://pay.crypt.bot/api"  # mainnet; для тестнета: https://testnet-pay.crypt.bot/api
+    # Лимиты крипто-вывода (анти-фрод): минимум за раз и суточный лимит в рудах.
+    crypto_min_mana: int = 5000          # минимум на вывод (≈100 ₽ при 50 руды/₽)
+    crypto_daily_limit_mana: int = 50000 # потолок суммы заявок в сутки на охотника
 
     # ── Cursor-мост (Cloud Agents API → GitHub-репозиторий проекта) ───────────
     cursor_api_key: str = ""
@@ -189,6 +206,13 @@ def load_config() -> Config:
         ad_self_serve_enabled=_get_bool("AD_SELF_SERVE_ENABLED", True),
         ad_price_per_sub_stars=_get_int("AD_PRICE_PER_SUB_STARS", 1),
         ad_min_stars=_get_int("AD_MIN_STARS", 50),
+        ad_boost_stars=_get_int("AD_BOOST_STARS", 150),
+        task_boost_priority=_get_int("TASK_BOOST_PRIORITY", 100),
+        pro_chat_enabled=_get_bool("PRO_CHAT_ENABLED", True),
+        pro_price_30_stars=_get_int("PRO_PRICE_30_STARS", 150),
+        pro_price_90_stars=_get_int("PRO_PRICE_90_STARS", 350),
+        pro_triggers_limit=_get_int("PRO_TRIGGERS_LIMIT", 500),
+        pro_analytics_days=_get_int("PRO_ANALYTICS_DAYS", 90),
         daily_dungeon_base=_get_int("DAILY_DUNGEON_BASE", 25),
         daily_dungeon_ad_bonus=_get_int("DAILY_DUNGEON_AD_BONUS", 25),
         dungeon_streak_milestone=_get_int("DUNGEON_STREAK_MILESTONE", 30),
@@ -224,6 +248,9 @@ def load_config() -> Config:
         crypto_withdraw_enabled=_get_bool("CRYPTO_WITHDRAW_ENABLED", False),
         crypto_bot_token=os.getenv("CRYPTO_BOT_TOKEN", "").strip(),
         crypto_asset=os.getenv("CRYPTO_ASSET", "USDT").strip(),
+        crypto_api_base=os.getenv("CRYPTO_API_BASE", "https://pay.crypt.bot/api").strip(),
+        crypto_min_mana=_get_int("CRYPTO_MIN_MANA", 5000),
+        crypto_daily_limit_mana=_get_int("CRYPTO_DAILY_LIMIT_MANA", 50000),
         cursor_api_key=os.getenv("CURSOR_API_KEY", "").strip(),
         cursor_repo_url=os.getenv("CURSOR_REPO_URL", "https://github.com/ciseuadm/Manager-S-Rank").strip(),
         cursor_repo_ref=os.getenv("CURSOR_REPO_REF", "main").strip(),

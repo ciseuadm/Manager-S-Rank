@@ -1,5 +1,6 @@
 import asyncio
 import html
+from datetime import datetime, timezone
 
 from aiogram import Bot
 from aiogram.types import Message, User
@@ -109,6 +110,22 @@ async def get_target_user(message: Message) -> tuple[int, str] | None:
 
 def is_admin_permission(status: str) -> bool:
     return status in ("administrator", "creator")
+
+
+def is_chat_pro(settings: dict | None) -> bool:
+    """Активна ли Pro-подписка чата (флаг pro + не истёкший pro_until, UTC)."""
+    if not settings or not settings.get("pro"):
+        return False
+    until = settings.get("pro_until")
+    if not until:
+        return False
+    try:
+        dt = datetime.fromisoformat(str(until))
+    except (ValueError, TypeError):
+        return False
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) <= dt
 
 
 # ── Admin guards ────────────────────────────────────────────────────────────────

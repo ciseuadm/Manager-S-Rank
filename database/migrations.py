@@ -347,6 +347,8 @@ _NEW_COLUMNS = {
         "verify_mode": "TEXT DEFAULT 'membership'",
         "duration_sec": "INTEGER DEFAULT 0",    # для 'watch' (сколько секунд смотреть)
         "answer": "TEXT DEFAULT ''",            # для 'quiz' (правильный ответ, lower)
+        # Платный приоритет в выдаче /tasks: чем выше, тем раньше показываем.
+        "priority": "INTEGER DEFAULT 0",
     },
     "task_completions": {
         # Пруф для 'proof'-заданий (текст/описание/file_id фото). Выполнение

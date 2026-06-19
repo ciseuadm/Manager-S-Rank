@@ -18,7 +18,7 @@ from .tasks import (
     daily_tasks_view, effective_daily_limit,
     check_and_credit_subscription, check_and_credit_task, watch_claim,
     credit_pending_completion, reject_pending_completion, default_verify_mode,
-    request_payout, refund_payout,
+    request_payout, refund_payout, request_crypto_payout,
     user_streak, streak_multiplier, check_milestones,
     find_unsubscribed_channels, resubscribe_keyboard,
 )
@@ -46,7 +46,7 @@ __all__ = [
     "daily_tasks_view", "effective_daily_limit",
     "check_and_credit_subscription", "check_and_credit_task", "watch_claim",
     "credit_pending_completion", "reject_pending_completion", "default_verify_mode",
-    "request_payout", "refund_payout",
+    "request_payout", "refund_payout", "request_crypto_payout",
     "user_streak", "streak_multiplier", "check_milestones",
     "find_unsubscribed_channels", "resubscribe_keyboard",
     "submit_ad_request", "approve_ad_request", "reject_ad_request", "end_sponsorship",

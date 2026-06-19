@@ -24,6 +24,7 @@ from database import (
     award_achievement_capped, count_achievement,
     get_user_channel_task_completions, count_user_completions_today,
     get_completion_by_id, set_completion_status, has_pending_completion,
+    payout_sum_today,
 )
 from utils import (
     get_config, calculate_rank, rank_reward_multiplier,
@@ -531,3 +532,39 @@ async def request_payout(user_id: int, amount: int, product: str) -> tuple[bool,
 async def refund_payout(user_id: int, amount: int, ref: str = "") -> None:
     """Вернуть руду при отклонении заявки владельцем."""
     await add_mana(user_id, amount, "redeem_refund", ref_id=ref)
+
+
+async def request_crypto_payout(user_id: int, amount: int) -> tuple[bool, Optional[int], str]:
+    """
+    Заявка на КРИПТО-вывод руды: проверяет лимиты (минимум, суточный потолок),
+    списывает руду в escrow и регистрирует payout_request с product
+    "crypto:<ASSET>". Подтверждает/исполняет владелец в /payouts (авто-перевод
+    через Crypto Pay при наличии токена, иначе вручную). (ok, req_id, err).
+    """
+    cfg = get_config()
+    if not cfg.crypto_withdraw_enabled:
+        return False, None, "Крипто-вывод пока отключён."
+    if amount < cfg.crypto_min_mana:
+        return False, None, f"Минимум для крипто-вывода — {cfg.crypto_min_mana} руды."
+
+    bal = await get_wallet_balance(user_id)
+    if bal < amount:
+        return False, None, "Недостаточно Мана-руды на балансе."
+
+    used_today = await payout_sum_today(user_id, "crypto:")
+    if used_today + amount > cfg.crypto_daily_limit_mana:
+        left = max(0, cfg.crypto_daily_limit_mana - used_today)
+        return False, None, (
+            f"Суточный лимит крипто-вывода — {cfg.crypto_daily_limit_mana} руды. "
+            f"Сегодня доступно ещё {left}."
+        )
+
+    product = f"crypto:{cfg.crypto_asset}"
+    new_bal = await spend_mana(user_id, amount, "redeem_crypto", ref_id=product)
+    if new_bal is None:
+        return False, None, "Недостаточно руды (списание не прошло)."
+
+    usd_cents = mana_to_usd_cents(amount)
+    req_id = await create_payout_request(user_id, amount, product, usd_cents)
+    logger.info(f"[TASKS] crypto payout request #{req_id} user={user_id} {amount} → {product}")
+    return True, req_id, ""

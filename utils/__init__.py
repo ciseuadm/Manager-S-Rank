@@ -23,7 +23,7 @@ from .helpers import (
     mention_html, mention_html_raw, escape_html, safe_format,
     parse_time_arg, get_target_user,
     set_owner_id, get_owner_id, is_owner, is_chat_admin, is_chat_staff,
-    require_admin, set_config, get_config,
+    require_admin, set_config, get_config, is_chat_pro,
 )
 from .mana import format_mana, mana_word
 from .premium_emoji import ce, has_premium, strip_custom_emoji, visible_len, E as PREMIUM_EMOJI
@@ -50,7 +50,7 @@ __all__ = [
     "mention_html", "mention_html_raw", "escape_html", "safe_format",
     "parse_time_arg", "get_target_user",
     "set_owner_id", "get_owner_id", "is_owner", "is_chat_admin", "is_chat_staff",
-    "require_admin", "set_config", "get_config",
+    "require_admin", "set_config", "get_config", "is_chat_pro",
     "format_mana", "mana_word",
     "ce", "has_premium", "strip_custom_emoji", "visible_len", "PREMIUM_EMOJI",
 ]

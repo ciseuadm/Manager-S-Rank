@@ -20,7 +20,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 
 from database import (
-    list_tasks, set_task_active, create_task,
+    list_tasks, set_task_active, create_task, set_task_priority,
     task_completions_count, list_payout_requests,
     get_payout_request, set_payout_status, get_user_achievements,
     get_xp, list_pending_completions, get_completion_by_id, get_task,
@@ -28,10 +28,11 @@ from database import (
 from services import (
     daily_tasks_view, check_and_credit_subscription, check_and_credit_task,
     watch_claim, credit_pending_completion, reject_pending_completion,
-    request_payout,
+    request_payout, request_crypto_payout,
     refund_payout, mana_to_usd_cents, mana_to_rub, balance_of,
     user_streak, streak_multiplier, find_unsubscribed_channels, resubscribe_keyboard,
 )
+from services.crypto import crypto_enabled, crypto_auto, mana_to_crypto_amount, transfer as crypto_transfer
 from services.gifts import get_catalog, send_telegram_gift, offer_from_product
 from utils.redeem_ui import redeem_intro, redeem_keyboard
 from utils import (
@@ -390,6 +391,67 @@ async def cmd_redeem(message: Message) -> None:
         parse_mode="HTML",
         reply_markup=kb.as_markup(),
     )
+
+
+@router.message(Command("payoutcrypto", "cashout", "crypto"), F.chat.type == "private")
+async def cmd_payout_crypto(message: Message, bot: Bot) -> None:
+    if not message.from_user:
+        return
+    cfg = get_config()
+    if not crypto_enabled():
+        await message.answer(
+            "🪙 <b>Крипто-вывод</b>\n\n"
+            "Сейчас вывод в крипте отключён. Доступен обмен руды на подарки: /redeem.",
+            parse_mode="HTML",
+        )
+        return
+
+    args = (message.text or "").split()
+    amount = next((int(a) for a in args[1:] if a.isdigit()), 0)
+    if amount <= 0:
+        bal = await balance_of(message.from_user.id)
+        await message.answer(
+            "🪙 <b>ВЫВОД В КРИПТЕ</b>\n\n"
+            f"Актив: <b>{cfg.crypto_asset}</b> (через @CryptoBot).\n"
+            f"Курс: {cfg.mana_per_rub} руды = 1 ₽.\n"
+            f"Минимум: <b>{format_mana(cfg.crypto_min_mana)}</b>, "
+            f"суточный лимит: <b>{format_mana(cfg.crypto_daily_limit_mana)}</b>.\n"
+            f"Твой баланс: <b>{format_mana(bal)}</b>\n\n"
+            "Использование: <code>/payoutcrypto 5000</code>\n"
+            "<i>Деньги придут на твой аккаунт в @CryptoBot — им нужно хоть раз "
+            "воспользоваться. Заявку подтверждает Монарх.</i>",
+            parse_mode="HTML",
+        )
+        return
+
+    ok, req_id, err = await request_crypto_payout(message.from_user.id, amount)
+    if not ok:
+        await message.answer(f"❌ {err}")
+        return
+
+    crypto_amt = mana_to_crypto_amount(amount)
+    await message.answer(
+        "✅ <b>ЗАЯВКА НА КРИПТО-ВЫВОД СОЗДАНА</b>\n\n"
+        f"№{req_id}\n"
+        f"Списано: <b>{format_mana(amount)}</b> ≈ <b>{crypto_amt:.2f} {cfg.crypto_asset}</b>\n"
+        "Монарх подтвердит заявку — деньги придут в @CryptoBot.",
+        parse_mode="HTML",
+    )
+    if cfg.owner_id and req_id:
+        try:
+            await bot.send_message(
+                cfg.owner_id,
+                "🪙 <b>НОВАЯ ЗАЯВКА НА КРИПТО-ВЫВОД</b>\n\n"
+                f"№{req_id}\n"
+                f"Пользователь: <code>{message.from_user.id}</code> "
+                f"({mention_html_raw(message.from_user.id, message.from_user.full_name)})\n"
+                f"Сумма: <b>{format_mana(amount)}</b> ≈ <b>{crypto_amt:.2f} {cfg.crypto_asset}</b>\n\n"
+                f"Подтвердить: /approve {req_id}\n"
+                f"Отклонить: /reject {req_id}",
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            logger.warning(f"[TASKS] owner crypto notify failed: {e}")
 
 
 @router.callback_query(F.data == "redeem:close")
@@ -803,6 +865,40 @@ async def cmd_deltask(message: Message) -> None:
     await message.answer(f"⚪️ Задание #{args[1]} выключено.")
 
 
+@router.message(Command("boosttask"), F.chat.type == "private")
+async def cmd_boosttask(message: Message) -> None:
+    """Платный приоритет задания в выдаче /tasks.
+
+    Спонсор доплачивает за топ-позицию — владелец вручную поднимает приоритет.
+    Без аргумента уровня берётся config.task_boost_priority; 0 — снять буст.
+    """
+    if not is_owner(message.from_user.id):
+        return
+    args = (message.text or "").split()
+    if len(args) < 2 or not args[1].isdigit():
+        await message.answer(
+            "🚀 <b>Буст задания</b>\n\n"
+            "Использование: <code>/boosttask &lt;id&gt; [уровень]</code>\n"
+            "Без уровня — стандартный приоритет, <code>0</code> — снять буст.\n"
+            "Чем выше приоритет, тем раньше задание в /tasks.",
+            parse_mode="HTML",
+        )
+        return
+    task_id = int(args[1])
+    task = await get_task(task_id)
+    if not task:
+        await message.answer("Задание не найдено.")
+        return
+    level = int(args[2]) if len(args) > 2 and args[2].isdigit() else get_config().task_boost_priority
+    await set_task_priority(task_id, level)
+    if level > 0:
+        await message.answer(
+            f"🚀 Задание #{task_id} поднято в выдаче (приоритет {level})."
+        )
+    else:
+        await message.answer(f"⬇️ Буст с задания #{task_id} снят.")
+
+
 # ── Owner: быстрые создатели заданий новых типов ─────────────────────────────
 # Все задания создаёт только владелец — фрод-задания исключены на входе.
 
@@ -964,6 +1060,61 @@ async def cmd_approve(message: Message, bot: Bot) -> None:
     req = await get_payout_request(int(args[1]))
     if not req or req["status"] != "pending":
         await message.answer("Заявка не найдена или уже обработана.")
+        return
+
+    # ── Крипто-вывод: авто-перевод через Crypto Pay (или ручной режим) ──
+    if str(req["product"]).startswith("crypto:"):
+        cfg = get_config()
+        crypto_amt = mana_to_crypto_amount(req["amount"])
+        if crypto_auto():
+            ok, info = await crypto_transfer(
+                req["user_id"], crypto_amt,
+                spend_id=f"payout_{req['id']}",
+                comment=f"S-Rank payout #{req['id']}",
+            )
+            if not ok:
+                await message.answer(
+                    f"❌ Авто-перевод не прошёл: <code>{escape_html(info)}</code>\n"
+                    f"Проверь токен/баланс Crypto Pay. Заявка #{req['id']} осталась в очереди.",
+                    parse_mode="HTML",
+                )
+                return
+            await set_payout_status(req["id"], "fulfilled", note=f"crypto:{info}")
+            await message.answer(
+                f"✅ Заявка #{req['id']}: переведено "
+                f"<b>{crypto_amt:.2f} {cfg.crypto_asset}</b> пользователю "
+                f"<code>{req['user_id']}</code> (transfer {escape_html(info)}).",
+                parse_mode="HTML",
+            )
+            try:
+                await bot.send_message(
+                    req["user_id"],
+                    f"🪙 <b>Крипто-вывод выполнен!</b>\n"
+                    f"На твой @CryptoBot пришло <b>{crypto_amt:.2f} {cfg.crypto_asset}</b>. "
+                    "Спасибо, охотник!",
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass
+        else:
+            # Токена нет — ручной режим: владелец переводит сам, затем /approve.
+            await set_payout_status(req["id"], "approved", note="crypto_manual")
+            await message.answer(
+                f"✅ Заявка #{req['id']} помечена выполненной (ручной режим).\n"
+                f"Переведи <b>{crypto_amt:.2f} {cfg.crypto_asset}</b> пользователю "
+                f"<code>{req['user_id']}</code> вручную. "
+                "<i>Чтобы переводить автоматически — впиши CRYPTO_BOT_TOKEN.</i>",
+                parse_mode="HTML",
+            )
+            try:
+                await bot.send_message(
+                    req["user_id"],
+                    "🪙 <b>Крипто-вывод одобрен!</b>\n"
+                    "Монарх отправит средства в ближайшее время.",
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass
         return
 
     offer = offer_from_product(req["product"])

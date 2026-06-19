@@ -11,10 +11,10 @@ from database import (
     add_trigger, remove_trigger, list_triggers, count_triggers,
     save_note, get_note, delete_note, list_notes,
     add_whitelist_word, remove_whitelist_word, get_whitelist_words,
-    update_chat_setting,
+    update_chat_setting, get_chat_settings,
 )
 from services.triggers import invalidate as invalidate_triggers
-from utils import require_admin, escape_html
+from utils import require_admin, escape_html, get_config, is_chat_pro
 
 router = Router()
 _GROUP = F.chat.type.in_({"group", "supergroup"})
@@ -45,8 +45,13 @@ async def cmd_addtrigger(message: Message, bot: Bot) -> None:
     if not pattern or not response:
         await message.reply("⚠️ И ключ, и ответ должны быть непустыми.")
         return
-    if await count_triggers(message.chat.id) >= _MAX_TRIGGERS:
-        await message.reply(f"⚠️ Достигнут лимит триггеров ({_MAX_TRIGGERS}). Удали лишние: /deltrigger")
+    settings = await get_chat_settings(message.chat.id)
+    limit = get_config().pro_triggers_limit if is_chat_pro(settings) else _MAX_TRIGGERS
+    if await count_triggers(message.chat.id) >= limit:
+        hint = "" if is_chat_pro(settings) else " Подними лимит до Pro: /pro"
+        await message.reply(
+            f"⚠️ Достигнут лимит триггеров ({limit}). Удали лишние: /deltrigger.{hint}"
+        )
         return
     ok = await add_trigger(message.chat.id, pattern, response, "contains", message.from_user.id)
     invalidate_triggers(message.chat.id)

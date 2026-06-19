@@ -25,6 +25,7 @@ from handlers import (
     owner_router, economy_router, referral_router, payments_router,
     ads_router, sponsors_router, tasks_router, cursor_router, fun_router,
     menu_router, chat_lifecycle_router, triggers_router, social_router,
+    pro_router,
     set_bot_id,
 )
 from services.cursor_bridge import bridge as cursor_bridge
@@ -148,6 +149,7 @@ ADMIN_ONLY_COMMANDS = [
     BotCommand(command="allowword", description="✅ Слово в белый список"),
     BotCommand(command="allowlist", description="📋 Белый список антимата"),
     BotCommand(command="modstats", description="📊 Аналитика модерации"),
+    BotCommand(command="pro", description="⭐ Pro-чат за Stars"),
     BotCommand(command="ads", description="📢 Реклама в чате on/off"),
 ]
 
@@ -172,6 +174,7 @@ OWNER_COMMANDS = PRIVATE_COMMANDS + [
     BotCommand(command="addproof", description="📤 Задание с ручным пруфом"),
     BotCommand(command="taskproofs", description="📥 Очередь пруфов"),
     BotCommand(command="tasklist", description="📋 Список заданий"),
+    BotCommand(command="boosttask", description="🚀 Поднять задание в выдаче"),
     BotCommand(command="adreqs", description="📥 Заявки рекламодателей"),
     BotCommand(command="endsponsor", description="🛑 Остановить спонсорство"),
     BotCommand(command="payouts", description="🎁 Заявки на вывод"),
@@ -300,6 +303,7 @@ async def main() -> None:
     dp.include_router(admin_router)
     dp.include_router(triggers_router)
     dp.include_router(social_router)
+    dp.include_router(pro_router)
     dp.include_router(user_router)
     dp.include_router(settings_router)
     dp.include_router(economy_router)

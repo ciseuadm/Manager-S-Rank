@@ -19,6 +19,7 @@ async def create_task(
     sponsor_type: str = "house", advertiser_id: int = 0, anonymous: int = 1,
     description: str = "", target_subs: int = 0, guarantee_days: int = 0,
     verify_mode: str = "membership", duration_sec: int = 0, answer: str = "",
+    priority: int = 0,
 ) -> int:
     db = await get_db()
     cur = await db.execute(
@@ -26,15 +27,23 @@ async def create_task(
            (type, title, channel_id, channel_username, url, reward,
             revenue_cents, daily, created_by, sponsor_type, advertiser_id,
             anonymous, description, target_subs, guarantee_days,
-            verify_mode, duration_sec, answer)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            verify_mode, duration_sec, answer, priority)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (type, title, channel_id, channel_username, url, reward,
          revenue_cents, daily, created_by, sponsor_type, advertiser_id,
          anonymous, description, target_subs, guarantee_days,
-         verify_mode, duration_sec, answer.lower()),
+         verify_mode, duration_sec, answer.lower(), priority),
     )
     await db.commit()
     return cur.lastrowid
+
+
+async def set_task_priority(task_id: int, priority: int) -> None:
+    db = await get_db()
+    await db.execute(
+        "UPDATE tasks SET priority = ? WHERE id = ?", (priority, task_id)
+    )
+    await db.commit()
 
 
 async def get_task(task_id: int) -> Optional[dict]:
@@ -47,10 +56,12 @@ async def get_task(task_id: int) -> Optional[dict]:
 async def get_active_tasks(type: Optional[str] = None, limit: int = 50) -> list[dict]:
     db = await get_db()
     if type:
-        sql = "SELECT * FROM tasks WHERE active = 1 AND type = ? ORDER BY id DESC LIMIT ?"
+        sql = ("SELECT * FROM tasks WHERE active = 1 AND type = ? "
+               "ORDER BY priority DESC, id DESC LIMIT ?")
         args = (type, limit)
     else:
-        sql = "SELECT * FROM tasks WHERE active = 1 ORDER BY id DESC LIMIT ?"
+        sql = ("SELECT * FROM tasks WHERE active = 1 "
+               "ORDER BY priority DESC, id DESC LIMIT ?")
         args = (limit,)
     async with db.execute(sql, args) as cur:
         rows = await cur.fetchall()
@@ -297,6 +308,20 @@ async def list_payout_requests(status: Optional[str] = None, limit: int = 30) ->
     async with db.execute(sql, args) as cur:
         rows = await cur.fetchall()
     return [dict(r) for r in rows]
+
+
+async def payout_sum_today(user_id: int, product_prefix: str) -> int:
+    """Сумма руды в заявках пользователя за сегодня (UTC) по типу product
+    (LIKE prefix%), исключая отклонённые. Для суточных лимитов крипто-вывода."""
+    db = await get_db()
+    async with db.execute(
+        """SELECT COALESCE(SUM(amount), 0) AS s FROM payout_requests
+           WHERE user_id = ? AND product LIKE ? AND status != 'rejected'
+             AND date(created_at) = date('now')""",
+        (user_id, product_prefix + "%"),
+    ) as cur:
+        row = await cur.fetchone()
+    return row["s"] if row else 0
 
 
 async def set_payout_status(req_id: int, status: str, note: str = "") -> None:

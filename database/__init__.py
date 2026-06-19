@@ -1,6 +1,6 @@
 from .db import init_db, close_db, get_db
 from .models import (
-    get_chat_settings, update_chat_setting, set_chat_title,
+    get_chat_settings, update_chat_setting, set_chat_title, set_chat_pro,
     get_or_create_user, increment_messages, update_user_rank,
     add_messages, claim_daily, credit_invite, get_top_inviters,
     add_warn, remove_warn, reset_warns, get_warn_history,
@@ -58,6 +58,7 @@ from .social import (
 )
 from .tasks import (
     create_task, get_task, get_active_tasks, list_tasks, set_task_active,
+    set_task_priority,
     task_completions_count, get_completion, get_completed_task_ids,
     count_user_credited_subs, count_user_completions_today,
     record_completion, get_credited_channel_completions, mark_completion_reverted,
@@ -66,14 +67,14 @@ from .tasks import (
     get_completion_by_id, list_pending_completions, set_completion_status,
     has_pending_completion,
     create_payout_request, get_payout_request, list_payout_requests, set_payout_status,
-    payout_cost_summary, sponsor_revenue_cents,
+    payout_cost_summary, sponsor_revenue_cents, payout_sum_today,
     has_achievement, count_achievement, award_achievement,
     award_achievement_capped, get_user_achievements,
 )
 
 __all__ = [
     "init_db", "close_db", "get_db",
-    "get_chat_settings", "update_chat_setting", "set_chat_title",
+    "get_chat_settings", "update_chat_setting", "set_chat_title", "set_chat_pro",
     "get_or_create_user", "increment_messages", "update_user_rank",
     "add_messages", "claim_daily", "credit_invite", "get_top_inviters",
     "add_warn", "remove_warn", "reset_warns", "get_warn_history",
@@ -118,6 +119,7 @@ __all__ = [
     "get_marriage", "create_marriage", "divorce",
     # tasks
     "create_task", "get_task", "get_active_tasks", "list_tasks", "set_task_active",
+    "set_task_priority",
     "task_completions_count", "get_completion", "get_completed_task_ids",
     "count_user_credited_subs", "count_user_completions_today",
     "record_completion", "get_credited_channel_completions", "mark_completion_reverted",
@@ -126,7 +128,7 @@ __all__ = [
     "get_completion_by_id", "list_pending_completions", "set_completion_status",
     "has_pending_completion",
     "create_payout_request", "get_payout_request", "list_payout_requests", "set_payout_status",
-    "payout_cost_summary", "sponsor_revenue_cents",
+    "payout_cost_summary", "sponsor_revenue_cents", "payout_sum_today",
     "has_achievement", "count_achievement", "award_achievement",
     "award_achievement_capped", "get_user_achievements",
 ]

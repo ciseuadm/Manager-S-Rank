@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from .db import get_db
 
@@ -29,6 +29,37 @@ async def update_chat_setting(chat_id: int, key: str, value) -> None:
         f"UPDATE chat_settings SET {key} = ? WHERE chat_id = ?", (value, chat_id)
     )
     await db.commit()
+
+
+async def set_chat_pro(chat_id: int, days: int) -> str:
+    """Включить/продлить Pro-подписку чата на `days` дней.
+
+    Если подписка ещё активна — продлеваем от её срока, иначе от текущего
+    момента. Возвращает новый pro_until (ISO, UTC).
+    """
+    from utils import is_chat_pro
+    settings = await get_chat_settings(chat_id)
+    now = datetime.now(timezone.utc)
+    base = now
+    if is_chat_pro(settings):
+        try:
+            cur = datetime.fromisoformat(str(settings.get("pro_until")))
+            if cur.tzinfo is None:
+                cur = cur.replace(tzinfo=timezone.utc)
+            base = max(base, cur)
+        except (ValueError, TypeError):
+            pass
+    until = (base + timedelta(days=days)).isoformat()
+    db = await get_db()
+    await db.execute(
+        "INSERT OR IGNORE INTO chat_settings (chat_id) VALUES (?)", (chat_id,)
+    )
+    await db.execute(
+        "UPDATE chat_settings SET pro = 1, pro_until = ? WHERE chat_id = ?",
+        (until, chat_id),
+    )
+    await db.commit()
+    return until
 
 
 async def set_chat_title(chat_id: int, title: str) -> None:

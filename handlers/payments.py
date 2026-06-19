@@ -137,6 +137,18 @@ async def cmd_donate(message: Message, bot: Bot) -> None:
         await message.reply("Не удалось выставить счёт. Открой бота в ЛС и повтори.")
 
 
+def _valid_pro_payload(payload: str) -> bool:
+    # pro:<chat_id>:<days> — chat_id может быть отрицательным.
+    if not payload.startswith("pro:"):
+        return False
+    parts = payload.split(":")
+    return (
+        len(parts) == 3
+        and parts[1].lstrip("-").isdigit()
+        and parts[2].isdigit()
+    )
+
+
 # ── Pre-checkout: подтверждаем готовность принять платёж ─────────────────────
 
 @router.pre_checkout_query()
@@ -148,7 +160,7 @@ async def on_pre_checkout(query: PreCheckoutQuery) -> None:
         and int(payload.split(":", 1)[1]) in _PACKS_BY_ID
     ) or (
         payload.startswith("adreq:") and payload.split(":", 1)[1].isdigit()
-    )
+    ) or _valid_pro_payload(payload)
     if ok:
         await query.answer(ok=True)
     else:
@@ -211,6 +223,31 @@ async def on_successful_payment(message: Message) -> None:
                 await _notify_owner_new_request(message.bot, req_id)
             except Exception as e:
                 logger.warning(f"[PAY] owner notify (adreq) failed: {e}")
+    elif _valid_pro_payload(payload):
+        # Pro-подписка чата: включаем/продлеваем и уведомляем покупателя и чат.
+        from database import set_chat_pro
+        _, chat_raw, days_raw = payload.split(":")
+        target_chat = int(chat_raw)
+        days = int(days_raw)
+        until = await set_chat_pro(target_chat, days)
+        await add_payment(user_id, stars, "pro_chat", f"{target_chat}:{days}", charge_id)
+        until_d = until[:10]
+        await message.answer(
+            "✅ <b>Pro-чат активирован!</b>\n\n"
+            f"Срок: <b>+{days} дн.</b> (до {until_d}).\n"
+            "Расширенная аналитика (/modstats за 90 дней), повышенные лимиты "
+            "триггеров и Pro-бейдж уже работают. Спасибо!",
+            parse_mode="HTML",
+        )
+        try:
+            await message.bot.send_message(
+                target_chat,
+                "⭐ <b>Этот чат получил Pro!</b>\n"
+                f"Премиум-режим Системы активен до {until_d}.",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
     else:
         await add_payment(user_id, stars, "unknown", payload, charge_id)
 
