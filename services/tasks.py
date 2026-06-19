@@ -23,7 +23,7 @@ from database import (
     get_user_channel_task_completions, count_user_completions_today,
 )
 from utils import (
-    get_config, calculate_rank, rank_perks, rank_reward_multiplier,
+    get_config, calculate_rank, rank_reward_multiplier,
 )
 
 
@@ -125,9 +125,10 @@ def _is_subscribed(member) -> bool:
 
 # ── Дневной лимит и индивидуальный подбор заданий ────────────────────────────
 
-def effective_daily_limit(rank: str) -> int:
-    """Дневной лимит заданий с учётом привилегий ранга (S/SS/SSS дают больше)."""
-    return get_config().tasks_daily_limit + rank_perks(rank)["daily_task_bonus"]
+def effective_daily_limit(rank: str = "") -> int:
+    """Дневной лимит заданий — ЕДИНЫЙ для всех рангов (макс. 3/день по умолчанию).
+    Параметр rank оставлен для совместимости вызовов и не влияет на результат."""
+    return get_config().tasks_daily_limit
 
 
 async def list_available_tasks(user_id: int) -> list[dict]:

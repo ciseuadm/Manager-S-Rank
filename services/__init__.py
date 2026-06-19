@@ -22,6 +22,9 @@ from .sponsors import (
     submit_ad_request, approve_ad_request, reject_ad_request, end_sponsorship,
     completion_guaranteed,
 )
+from .subgate import (
+    is_gate_passed, send_gate, gate_keyboard, GATE_CALLBACK, GATE_RECHECK_FAIL,
+)
 
 __all__ = [
     "broadcast",
@@ -40,4 +43,5 @@ __all__ = [
     "find_unsubscribed_channels", "resubscribe_keyboard",
     "submit_ad_request", "approve_ad_request", "reject_ad_request", "end_sponsorship",
     "completion_guaranteed",
+    "is_gate_passed", "send_gate", "gate_keyboard", "GATE_CALLBACK", "GATE_RECHECK_FAIL",
 ]

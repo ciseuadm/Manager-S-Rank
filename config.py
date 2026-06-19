@@ -100,6 +100,20 @@ class Config:
     bot_channel_id: Optional[int] = None
     bot_username: str = ""               # заполняется на старте из get_me
 
+    # ── Обязательная подписка на канал бота (гейт доступа) ───────────────────
+    # Без подписки на этот канал в личке бота доступен только /start: Система
+    # просит вступить в гильдию. Бот ДОЛЖЕН быть админом канала (для проверки).
+    sub_gate_enabled: bool = True
+    sub_gate_channel: str = "@Manager_Rank_S"   # @username или -100… ID для проверки
+    sub_gate_channel_url: str = "https://t.me/Manager_Rank_S"
+
+    # ── Вывод руды в криптовалюте (через крипто-бота) — настраивается позже ───
+    # Заготовка: когда будет выбран крипто-бот и получен токен — включить и
+    # вписать токен ниже, остальная обвязка экономики уже готова (payout_requests).
+    crypto_withdraw_enabled: bool = False
+    crypto_bot_token: str = ""           # СЮДА ВСТАВИТЬ токен крипто-бота (напр. @CryptoBot)
+    crypto_asset: str = "USDT"           # актив для выплат (USDT/TON/…)
+
     # ── Cursor-мост (Cloud Agents API → GitHub-репозиторий проекта) ───────────
     cursor_api_key: str = ""
     cursor_repo_url: str = "https://github.com/ciseuadm/Manager-S-Rank"
@@ -192,6 +206,14 @@ def load_config() -> Config:
         ads_send_hour=_get_int("ADS_SEND_HOUR", 12),
         payments_enabled=_get_bool("PAYMENTS_ENABLED", True),
         bot_channel_id=bot_channel_id,
+        sub_gate_enabled=_get_bool("SUB_GATE_ENABLED", True),
+        sub_gate_channel=os.getenv("SUB_GATE_CHANNEL", "@Manager_Rank_S").strip(),
+        sub_gate_channel_url=os.getenv(
+            "SUB_GATE_CHANNEL_URL", "https://t.me/Manager_Rank_S"
+        ).strip(),
+        crypto_withdraw_enabled=_get_bool("CRYPTO_WITHDRAW_ENABLED", False),
+        crypto_bot_token=os.getenv("CRYPTO_BOT_TOKEN", "").strip(),
+        crypto_asset=os.getenv("CRYPTO_ASSET", "USDT").strip(),
         cursor_api_key=os.getenv("CURSOR_API_KEY", "").strip(),
         cursor_repo_url=os.getenv("CURSOR_REPO_URL", "https://github.com/ciseuadm/Manager-S-Rank").strip(),
         cursor_repo_ref=os.getenv("CURSOR_REPO_REF", "main").strip(),

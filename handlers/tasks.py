@@ -34,7 +34,7 @@ from services.gifts import get_catalog, send_telegram_gift, offer_from_product
 from utils.redeem_ui import redeem_intro, redeem_keyboard
 from utils import (
     is_owner, get_config, format_mana, mention_html_raw,
-    get_rank_label, get_rank_title, perks_lines, has_privileges, RANK_PERKS,
+    get_rank_label, perks_lines, has_privileges,
     rank_perks, calculate_rank,
 )
 from utils.media import answer_with_banner
@@ -85,16 +85,14 @@ async def _render_tasks(user_id: int) -> tuple[str, InlineKeyboardBuilder]:
         "🔥 Каждая сохранённая подписка повышает множитель будущих наград!\n"
     )
 
-    # Привилегия ранга: надбавка к награде и к дневному лимиту (S/SS/SSS).
+    # Привилегия ранга: надбавка к награде за задание (S/SS/SSS).
     perk = rank_perks(rank)
     perk_line = ""
-    if has_privileges(rank):
-        extra = []
-        if perk["task_reward_pct"]:
-            extra.append(f"+{perk['task_reward_pct']}% к награде")
-        if perk["daily_task_bonus"]:
-            extra.append(f"+{perk['daily_task_bonus']} к лимиту")
-        perk_line = f"👑 Привилегия {get_rank_label(rank)}: <b>{', '.join(extra)}</b>\n"
+    if has_privileges(rank) and perk["task_reward_pct"]:
+        perk_line = (
+            f"👑 Привилегия {get_rank_label(rank)}: "
+            f"<b>+{perk['task_reward_pct']}% к награде</b>\n"
+        )
 
     limit_line = f"📅 Заданий сегодня: <b>{done_today}/{limit}</b>\n"
 
@@ -105,8 +103,8 @@ async def _render_tasks(user_id: int) -> tuple[str, InlineKeyboardBuilder]:
             f"✅ Дневной лимит выполнен: <b>{done_today}/{limit}</b> заданий.\n"
             f"🔹 Твой баланс: <b>{format_mana(balance)}</b>\n"
             f"{perk_line}"
-            "\n⏳ Новые задания откроются завтра. Подними ранг — и лимит станет больше "
-            "(привилегии S/SS/SSS): /privileges\n\n"
+            "\n⏳ Новые задания откроются завтра. Подними ранг (S/SS/SSS) — "
+            "и за каждое задание будешь получать больше руды: /privileges\n\n"
             "Обменять руду на подарок: /redeem · Достижения: /achievements"
         )
         b = InlineKeyboardBuilder()
@@ -202,7 +200,7 @@ async def cb_task_check(call: CallbackQuery, bot: Bot) -> None:
     elif code == "daily_limit":
         await call.answer(
             "📅 На сегодня лимит заданий исчерпан. Новые откроются завтра. "
-            "Подними ранг (S/SS/SSS) — лимит станет больше: /privileges",
+            "Ранг S/SS/SSS даёт больше руды за каждое задание: /privileges",
             show_alert=True,
         )
         text, kb = await _render_tasks(call.from_user.id)
@@ -372,6 +370,7 @@ async def cmd_privileges(message: Message) -> None:
     lines = [
         "👑 <b>ПРИВИЛЕГИИ ОХОТНИКОВ</b>",
         "<i>Чем выше ранг — тем больше зарабатываешь и меньше платишь Системе.</i>\n",
+        f"📅 Дневной лимит заданий — <b>{cfg.tasks_daily_limit}/день</b> для всех рангов.\n",
     ]
     # Таблица привилегий по рангам.
     for rank in ("S", "SS", "SSS"):
@@ -379,9 +378,7 @@ async def cmd_privileges(message: Message) -> None:
         mark = " ← ты здесь" if rank == my_rank else ""
         lines.append(
             f"{get_rank_label(rank)}{mark}\n"
-            f"   ⛏ +{p['task_reward_pct']}% к награде за задания\n"
-            f"   📅 +{p['daily_task_bonus']} к дневному лимиту заданий "
-            f"(итого {cfg.tasks_daily_limit + p['daily_task_bonus']}/день)\n"
+            f"   ⛏ +{p['task_reward_pct']}% к награде за каждое задание\n"
             f"   💸 −{p['transfer_fee_off']}% к комиссии перевода руды"
         )
 

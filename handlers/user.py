@@ -19,9 +19,10 @@ from keyboards import invite_keyboard, welcome_keyboard
 from services import (
     award_daily, register_bot_referral, register_chat_referral,
     claim_dungeon_reward, balance_of, rank_card,
+    is_gate_passed, send_gate, GATE_CALLBACK, GATE_RECHECK_FAIL,
 )
 from utils import (
-    get_rank_label, perks_lines, has_privileges,
+    get_rank_label, perks_lines,
     mention_html, escape_html, safe_format,
     WELCOME_DEFAULT, HELP_MSG, START_MSG, BOTFATHER_COMMANDS,
     INVITE_MSG, DAILY_MSG, DAILY_DONE_MSG, RULES_DEFAULT, INVITE_JOIN_MSG,
@@ -42,6 +43,7 @@ INVITE_BONUS = 30
 @router.message(Command("start"))
 async def cmd_start(message: Message, command: CommandObject, bot: Bot) -> None:
     # Deep-link referral: t.me/bot?start=ref_<inviter_id>
+    # Реферала фиксируем ДО гейта, чтобы не потерять привязку приглашённого.
     payload = (command.args or "").strip()
     if payload.startswith("ref_") and message.from_user:
         rest = payload[4:]
@@ -52,6 +54,13 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot) -> None:
             except Exception:
                 pass
 
+    # Гейт обязательной подписки (только в личке): без подписки показываем
+    # сообщение с кнопкой и НЕ открываем меню.
+    if message.chat.type == "private" and message.from_user:
+        if not await is_gate_passed(bot, message.from_user.id):
+            await send_gate(message)
+            return
+
     # Маркетинговый «крючок» из приветствия: t.me/bot?start=earn
     if payload == "earn":
         banner, text = "earn", EARN_MSG
@@ -61,6 +70,23 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot) -> None:
         await answer_with_banner(message, banner, text)
     except Exception as e:
         logger.warning(f"[START] send failed: {e}")
+
+
+@router.callback_query(F.data == GATE_CALLBACK)
+async def cb_subgate_check(call: CallbackQuery, bot: Bot) -> None:
+    """Кнопка «Я подписался»: перепроверяем подписку и открываем доступ."""
+    if await is_gate_passed(bot, call.from_user.id):
+        await call.answer("✅ Доступ открыт! Добро пожаловать, охотник.", show_alert=True)
+        try:
+            await call.message.delete()
+        except Exception:
+            pass
+        try:
+            await answer_with_banner(call.message, "start", START_MSG)
+        except Exception as e:
+            logger.warning(f"[SUBGATE] welcome send failed: {e}")
+    else:
+        await call.answer(GATE_RECHECK_FAIL, show_alert=True)
 
 
 # ── /help ──────────────────────────────────────────────────────────────────────

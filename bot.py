@@ -26,7 +26,7 @@ from handlers import (
     ads_router, sponsors_router, tasks_router, cursor_router, fun_router, set_bot_id,
 )
 from services.cursor_bridge import bridge as cursor_bridge
-from middlewares import ThrottleMiddleware
+from middlewares import ThrottleMiddleware, SubGateMiddleware
 from scheduler import setup_scheduler
 from utils import set_owner_id, set_config
 
@@ -257,6 +257,10 @@ async def main() -> None:
     throttle = ThrottleMiddleware(rate=0.5, callback_rate=0.7)
     dp.message.middleware(throttle)
     dp.callback_query.middleware(throttle)
+    # Subscription gate — после throttle: требует подписки на канал бота в личке.
+    subgate = SubGateMiddleware()
+    dp.message.middleware(subgate)
+    dp.callback_query.middleware(subgate)
 
     # Routers — order matters: moderation last so admin commands take priority
     dp.include_router(owner_router)
