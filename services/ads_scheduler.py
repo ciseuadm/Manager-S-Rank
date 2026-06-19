@@ -17,7 +17,7 @@ from database import (
     impressions_today, log_impression, mark_campaign_sent,
 )
 from services.broadcaster import broadcast
-from utils import get_config
+from utils import get_config, ce, strip_custom_emoji
 
 
 def _ad_markup(camp: dict) -> InlineKeyboardMarkup | None:
@@ -28,8 +28,14 @@ def _ad_markup(camp: dict) -> InlineKeyboardMarkup | None:
     return None
 
 
-async def _deliver(bot: Bot, chat_id: int, camp: dict) -> None:
-    """Send one ad to one chat. Raises on failure (so broadcaster counts it)."""
+async def _deliver(bot: Bot, chat_id: int, camp: dict, *, is_channel: bool = False) -> None:
+    """Send one ad to one chat. Raises on failure (so broadcaster counts it).
+
+    Премиум-эмодзи в тексте рекламы работают в группах/супергруппах (Premium у
+    владельца). В КАНАЛЕ бот не может показать кастом-эмодзи (ограничение Telegram,
+    Bot API 9.4) — поэтому для канала снимаем теги заранее, чтобы не слать заведомо
+    отклоняемый запрос. Кнопки (reply_markup) работают везде, включая канал.
+    """
     markup = _ad_markup(camp)
     if camp.get("content_type") == "copy":
         await bot.copy_message(
@@ -39,7 +45,9 @@ async def _deliver(bot: Bot, chat_id: int, camp: dict) -> None:
             reply_markup=markup,
         )
     else:
-        text = "📢 <b>Реклама</b>\n\n" + (camp.get("payload") or "")
+        text = f"{ce('megaphone')} <b>Реклама</b>\n\n" + (camp.get("payload") or "")
+        if is_channel:
+            text = strip_custom_emoji(text)
         await bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=markup,
                                disable_web_page_preview=False)
 
@@ -68,7 +76,7 @@ async def send_campaign(bot: Bot, camp: dict) -> dict:
             logger.warning("[ADS] channel target but BOT_CHANNEL_ID is empty")
             return {"sent": 0, "failed": 0, "removed": 0}
         try:
-            await _deliver(bot, cfg.bot_channel_id, camp)
+            await _deliver(bot, cfg.bot_channel_id, camp, is_channel=True)
             await log_impression(camp["id"], cfg.bot_channel_id, "sent")
             result = {"sent": 1, "failed": 0, "removed": 0}
         except Exception as e:

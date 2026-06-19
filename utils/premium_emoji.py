@@ -88,6 +88,7 @@ E: dict[str, dict[str, str]] = {
 }
 
 _TAG_RE = re.compile(r"<tg-emoji\b[^>]*>(.*?)</tg-emoji>", re.S)
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 
 def ce(name: str) -> str:
@@ -115,3 +116,18 @@ def has_premium(name: str) -> bool:
 def strip_custom_emoji(html: str) -> str:
     """Заменяет <tg-emoji>…</tg-emoji> на их обычный эмодзи (путь фолбэка)."""
     return _TAG_RE.sub(r"\1", html)
+
+
+def visible_len(text: str) -> int:
+    """Длина ВИДИМОГО текста в кодовых единицах UTF-16 — ровно как считает Telegram.
+
+    HTML-теги (<b>, <i>, <tg-emoji ...>) не входят в лимит подписи/сообщения, а
+    эмодзи занимают 2 единицы UTF-16. Поэтому для проверки лимита (1024 для
+    caption, 4096 для текста) нужно мерить именно так, а не raw len(text) —
+    иначе длинные теги премиум-эмодзи ложно «раздувают» строку и фото уходит
+    отдельным сообщением от подписи.
+    """
+    s = _HTML_TAG_RE.sub("", text)
+    s = (s.replace("&amp;", "&").replace("&lt;", "<")
+          .replace("&gt;", ">").replace("&quot;", '"').replace("&#39;", "'"))
+    return len(s.encode("utf-16-le")) // 2

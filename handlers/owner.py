@@ -18,7 +18,7 @@ from keyboards import owner_keyboard
 from services import broadcast
 from utils import (
     is_owner, format_mana, escape_html, get_config,
-    ANNOUNCE_LAUNCH, ANNOUNCE_REFERRAL,
+    ANNOUNCE_LAUNCH, ANNOUNCE_REFERRAL, strip_custom_emoji,
 )
 from utils.economy_rates import star_rub
 from utils.media import answer_with_banner
@@ -260,7 +260,12 @@ def _announce_target(cfg) -> str | int | None:
 
 
 def _announce_kit(kind: str, cfg) -> tuple[str, object]:
-    """Текст поста + публичная клавиатура (URL-кнопки) под него."""
+    """Текст поста + публичная клавиатура (URL-кнопки) под него.
+
+    Цель — канал. В канале бот не может показать премиум-эмодзи (ограничение
+    Telegram), поэтому снимаем теги заранее: и превью, и реальный пост будут
+    выглядеть одинаково (превью = то, что увидят подписчики).
+    """
     uname = (cfg.bot_username or "").lstrip("@")
     kb = InlineKeyboardBuilder()
     if kind == "launch":
@@ -270,14 +275,14 @@ def _announce_kit(kind: str, cfg) -> tuple[str, object]:
                 url=f"https://t.me/{uname}?startgroup=true",
             ))
             kb.row(InlineKeyboardButton(text="⚡ Открыть бота", url=f"https://t.me/{uname}"))
-        return ANNOUNCE_LAUNCH, kb.as_markup()
+        return strip_custom_emoji(ANNOUNCE_LAUNCH), kb.as_markup()
     # ref
     if uname:
         kb.row(InlineKeyboardButton(
             text="🕴 Стать Агентом — забрать ссылку",
             url=f"https://t.me/{uname}?start=earn",
         ))
-    return ANNOUNCE_REFERRAL, kb.as_markup()
+    return strip_custom_emoji(ANNOUNCE_REFERRAL), kb.as_markup()
 
 
 def _announce_menu() -> object:

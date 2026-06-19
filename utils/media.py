@@ -1,7 +1,10 @@
 """
 Баннеры для атмосферных команд бота (Solo Leveling стиль).
 
-Telegram caption — до 1024 символов; длинный текст уходит отдельным сообщением.
+Caption у фото в Telegram — до 1024 символов ВИДИМОГО текста (HTML/<tg-emoji>
+теги в лимит не входят, эмодзи = 2 ед. UTF-16). Если текст влезает — шлём фото
+с подписью и кнопками ОДНИМ сообщением. Если нет (например, /help) — шлём только
+текст одним сообщением, без «оторванной» аватарки отдельным постом.
 """
 from __future__ import annotations
 
@@ -9,6 +12,8 @@ from pathlib import Path
 
 from aiogram.types import FSInputFile, Message
 from loguru import logger
+
+from utils.premium_emoji import visible_len
 
 ASSETS_DIR = Path(__file__).resolve().parents[1] / "assets"
 
@@ -64,7 +69,9 @@ async def answer_with_banner(
     if disable_web_page_preview is not None:
         kwargs["disable_web_page_preview"] = disable_web_page_preview
 
-    if len(text) <= _CAPTION_LIMIT:
+    # Лимит подписи считаем по ВИДИМОМУ тексту (без HTML/<tg-emoji> тегов),
+    # иначе длинные премиум-теги ложно «выталкивают» фото в отдельное сообщение.
+    if visible_len(text) <= _CAPTION_LIMIT:
         try:
             return await message.answer_photo(
                 photo,
@@ -75,11 +82,11 @@ async def answer_with_banner(
         except Exception as e:
             logger.warning(f"[BANNER:{banner_key}] photo+caption failed: {e}")
 
-    try:
-        await message.answer_photo(photo)
-    except Exception as e:
-        logger.warning(f"[BANNER:{banner_key}] photo failed: {e}")
-
+    # Текст не влезает в подпись (например, /help): НЕ шлём фото отдельным
+    # сообщением (это и есть «оторванная аватарка»), а отправляем только текст
+    # одним сообщением. Принцип: либо фото+текст слитно, либо просто текст.
+    logger.info(f"[BANNER:{banner_key}] text too long for caption "
+                f"(visible={visible_len(text)}), sending text-only")
     return await message.answer(
         text,
         parse_mode=parse_mode,
@@ -103,7 +110,7 @@ async def edit_screen(
     новое сообщение, чтобы навигация никогда не «зависала».
     """
     try:
-        if message.photo and len(text) <= _CAPTION_LIMIT:
+        if message.photo and visible_len(text) <= _CAPTION_LIMIT:
             return await message.edit_caption(
                 caption=text, parse_mode=parse_mode, reply_markup=reply_markup
             )
