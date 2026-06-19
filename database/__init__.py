@@ -13,6 +13,7 @@ from .economy import (
     get_wallet, get_wallet_balance, add_mana, spend_mana, revert_mana,
     can_reward_message, mark_message_reward, get_top_mana, get_mana_emission,
     claim_dungeon, get_wallet_rank, set_wallet_rank,
+    get_xp, add_xp, sub_xp,
 )
 from .referrals import (
     add_referral, count_referrals, count_bot_referrals,
@@ -62,6 +63,7 @@ __all__ = [
     "set_chat_role", "get_chat_role", "mark_referral_rewarded",
     "get_unrewarded_referral", "mark_all_referrals_rewarded",
     "get_primary_referral", "set_referral_paid_rank",
+    "get_xp", "add_xp", "sub_xp",
     # guilds
     "get_guild", "get_or_create_guild", "set_guild_name", "set_guild_blocks",
     "guild_member_count", "guild_rank_counts", "top_guilds",

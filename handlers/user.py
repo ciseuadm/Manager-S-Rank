@@ -141,8 +141,8 @@ async def cmd_rank(message: Message) -> None:
         f"💬 Сообщений: <b>{msgs}</b>\n"
         f"⚠️ Предупреждений: <b>{db_user.get('warns', 0)}</b>\n\n"
         f"📊 Прогресс ранга: {card['progress']}{next_line}\n"
-        f"<i>Опыт даётся за выполненные задания (/tasks) — 100 опыта за подписку. "
-        f"Трату руды на подарки опыт не теряет.</i>"
+        f"<i>Опыт даётся за задания (/tasks) — 100 за подписку — и за подземелье "
+        f"(/dungeon, +руда = +опыт). Трата руды на подарки опыт не уменьшает.</i>"
     )
     await message.answer(text, parse_mode="HTML")
 

@@ -1,20 +1,21 @@
 """
-Ранги по выполненным заданиям (глобально по user_id).
+Ранги по накопленному ОПЫТУ (глобально по user_id).
 
-Источник истины ранга — число зачтённых подписок (`count_user_credited_subs`).
-`sync_task_rank` вызывается после начисления за задание и после clawback:
-ловит повышение, обновляет хранимый ранг (wallets.rank), выдаёт разовый
-бонус руды, объявляет повышение и платит агенту-вербовщику за веху рекрута.
+Источник истины ранга — хранимый опыт (`wallets.xp`), который растёт за
+честную добычу: задания-подписки (+100) и ежедневное подземелье (+руда=+опыт).
+`sync_rank` вызывается после начисления опыта и после clawback: ловит
+повышение, обновляет хранимый ранг (wallets.rank), выдаёт разовый бонус руды,
+объявляет повышение и платит агенту-вербовщику за веху рекрута.
 """
 from aiogram import Bot
 from loguru import logger
 
 from database import (
-    count_user_credited_subs, get_wallet_rank, set_wallet_rank,
+    get_xp, get_wallet_rank, set_wallet_rank,
 )
 from utils import (
     calculate_rank, rank_index, get_rank_label, get_rank_title,
-    score_to_next_rank, rank_progress_bar, xp_of,
+    score_to_next_rank, rank_progress_bar,
 )
 
 from .economy import award_rank_up
@@ -31,38 +32,36 @@ RANKUP_DM = (
 
 
 async def get_rank_score(user_id: int) -> int:
-    return await count_user_credited_subs(user_id)
+    return await get_xp(user_id)
 
 
 async def rank_card(user_id: int) -> dict:
     """Данные ранга для отображения в карточках (/rank, /me, welcome и т.д.).
 
-    Прогресс показываем в ОПЫТЕ (1 задание = 100 опыта). Опыт не уменьшается
-    при трате руды на подарки — на ранг влияют только выполненные задания.
+    Прогресс — в накопленном ОПЫТЕ. Опыт даётся за задания и подземелье и не
+    уменьшается при трате руды на подарки.
     """
-    score = await count_user_credited_subs(user_id)
-    rank = calculate_rank(score)
-    to_next = score_to_next_rank(score, rank)
+    xp = await get_xp(user_id)
+    rank = calculate_rank(xp)
+    to_next = score_to_next_rank(xp, rank)
     return {
-        "score": score,
         "rank": rank,
         "label": get_rank_label(rank),
         "title": get_rank_title(rank),
-        "progress": rank_progress_bar(score, rank),
-        "to_next": to_next,
-        "xp": xp_of(score),
-        "xp_to_next": None if to_next is None else xp_of(to_next),
+        "progress": rank_progress_bar(xp, rank),
+        "xp": xp,
+        "xp_to_next": to_next,
     }
 
 
-async def sync_task_rank(bot: Bot, user_id: int, *, announce: bool = True) -> str:
+async def sync_rank(bot: Bot, user_id: int, *, announce: bool = True) -> str:
     """
-    Пересчитывает глобальный ранг по числу заданий и фиксирует его.
+    Пересчитывает глобальный ранг по накопленному опыту и фиксирует его.
     При повышении: бонус руды + объявление + агентская награда вербовщику.
     При понижении (clawback): тихо обновляет хранимый ранг. Возвращает ранг.
     """
-    score = await count_user_credited_subs(user_id)
-    new_rank = calculate_rank(score)
+    xp = await get_xp(user_id)
+    new_rank = calculate_rank(xp)
     old_rank = await get_wallet_rank(user_id)
     if new_rank == old_rank:
         return new_rank
@@ -88,7 +87,7 @@ async def sync_task_rank(bot: Bot, user_id: int, *, announce: bool = True) -> st
                     old_label=get_rank_label(old_rank),
                     new_label=get_rank_label(new_rank),
                     title=get_rank_title(new_rank),
-                    xp=xp_of(score),
+                    xp=xp,
                     bonus_line=bonus_line,
                 ),
                 parse_mode="HTML",
@@ -102,5 +101,9 @@ async def sync_task_rank(bot: Bot, user_id: int, *, announce: bool = True) -> st
     except Exception:
         pass
 
-    logger.info(f"[RANK] user={user_id} {old_rank}→{new_rank} (score={score})")
+    logger.info(f"[RANK] user={user_id} {old_rank}→{new_rank} (xp={xp})")
     return new_rank
+
+
+# Обратная совместимость со старым именем.
+sync_task_rank = sync_rank

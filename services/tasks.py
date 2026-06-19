@@ -18,7 +18,7 @@ from database import (
     get_task, get_active_tasks, get_completion, get_completed_task_ids,
     record_completion, add_mana, spend_mana, revert_mana, get_wallet_balance,
     get_wallet, get_credited_channel_completions, mark_completion_reverted,
-    create_payout_request, count_user_credited_subs,
+    create_payout_request, count_user_credited_subs, add_xp, sub_xp,
     award_achievement_capped, count_achievement,
     get_user_channel_task_completions,
 )
@@ -203,12 +203,16 @@ async def check_and_credit_subscription(
             return "already", reward
 
     await add_mana(user_id, reward, "task_subscribe", ref_id=str(task_id))
+    # Опыт за задание — фиксированный (XP_PER_TASK), не зависит от стрик-бонуса
+    # руды: так шкала ранга остаётся стабильной (3 задания = ранг D).
+    from utils import XP_PER_TASK
+    await add_xp(user_id, XP_PER_TASK)
     logger.info(f"[TASKS] credited user={user_id} task={task_id} +{reward} (streak={streak})")
     await check_milestones(bot, user_id)
-    # Ранг считается по числу выполненных заданий → пересчёт + бонус/агент.
+    # Ранг считается по накопленному опыту → пересчёт + бонус/агент.
     try:
-        from .ranks import sync_task_rank
-        await sync_task_rank(bot, user_id)
+        from .ranks import sync_rank
+        await sync_rank(bot, user_id)
     except Exception:
         pass
     return "credited", reward
@@ -267,12 +271,14 @@ async def recheck_subscriptions(bot: Bot) -> dict:
         await revert_mana(
             c["user_id"], c["reward"], "task_clawback", ref_id=str(c["task_id"])
         )
+        from utils import XP_PER_TASK
+        await sub_xp(c["user_id"], XP_PER_TASK)
         await mark_completion_reverted(c["comp_id"])
         reverted += 1
         # Откат подписки может понизить ранг — тихо синхронизируем.
         try:
-            from .ranks import sync_task_rank
-            await sync_task_rank(bot, c["user_id"], announce=False)
+            from .ranks import sync_rank
+            await sync_rank(bot, c["user_id"], announce=False)
         except Exception:
             pass
         await notify_unsubscribe(

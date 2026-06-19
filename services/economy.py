@@ -11,7 +11,7 @@ from aiogram import Bot
 from database import (
     add_mana, spend_mana, get_wallet, get_wallet_balance,
     can_reward_message, mark_message_reward, claim_dungeon,
-    award_achievement,
+    award_achievement, add_xp,
 )
 from utils import get_config
 
@@ -92,7 +92,16 @@ async def claim_dungeon_reward(
     if milestone_hit and cfg.dungeon_streak_reward > 0:
         milestone_bonus = cfg.dungeon_streak_reward
         await add_mana(user_id, milestone_bonus, "dungeon_streak", chat_id=chat_id)
+        await add_xp(user_id, milestone_bonus)  # награда за стрик = опыт
         await award_achievement(user_id, STREAK_30_ACHIEVEMENT)
+
+    # Подземелье даёт опыт → ранг мог вырасти. Тихо/громко синхронизируем.
+    if status in ("claimed", "topup") or milestone_bonus:
+        try:
+            from .ranks import sync_rank
+            await sync_rank(bot, user_id)
+        except Exception:
+            pass
     return status, base, ad, has_ad, streak, milestone_bonus
 
 

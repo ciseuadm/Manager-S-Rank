@@ -38,6 +38,38 @@ async def set_wallet_rank(user_id: int, rank: str) -> None:
     await db.commit()
 
 
+async def get_xp(user_id: int) -> int:
+    return (await get_wallet(user_id)).get("xp", 0) or 0
+
+
+async def add_xp(user_id: int, amount: int) -> int:
+    """Начислить опыт (за задания/подземелье). Возвращает новый опыт."""
+    if amount <= 0:
+        return await get_xp(user_id)
+    await get_wallet(user_id)
+    db = await get_db()
+    await db.execute(
+        "UPDATE wallets SET xp = xp + ?, updated_at = datetime('now') WHERE user_id = ?",
+        (amount, user_id),
+    )
+    await db.commit()
+    return await get_xp(user_id)
+
+
+async def sub_xp(user_id: int, amount: int) -> int:
+    """Списать опыт (clawback за отписку). Не уводит ниже 0."""
+    if amount <= 0:
+        return await get_xp(user_id)
+    await get_wallet(user_id)
+    db = await get_db()
+    await db.execute(
+        "UPDATE wallets SET xp = MAX(0, xp - ?), updated_at = datetime('now') WHERE user_id = ?",
+        (amount, user_id),
+    )
+    await db.commit()
+    return await get_xp(user_id)
+
+
 async def _log_tx(db, user_id: int, amount: int, reason: str,
                   ref_id: str = "", chat_id: int = 0) -> None:
     await db.execute(
@@ -161,6 +193,7 @@ async def claim_dungeon(
         )
         await db.commit()
         await add_mana(user_id, base + ad_part, "dungeon", chat_id=chat_id)
+        await add_xp(user_id, base + ad_part)  # руда подземелья = опыт
         return "claimed", base, ad_part, streak, milestone_hit
 
     if not ad_given and has_ad:
@@ -169,6 +202,7 @@ async def claim_dungeon(
         )
         await db.commit()
         await add_mana(user_id, ad_bonus, "dungeon_ad", chat_id=chat_id)
+        await add_xp(user_id, ad_bonus)
         return "topup", 0, ad_bonus, streak, False
 
     return "already", 0, 0, streak, False

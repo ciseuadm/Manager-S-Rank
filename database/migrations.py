@@ -197,6 +197,9 @@ _NEW_COLUMNS = {
         # Глобальный ранг (по числу выполненных заданий). Хранится, чтобы
         # ловить повышения и не слать одно и то же повышение дважды.
         "rank": "TEXT DEFAULT 'E'",
+        # Накопленный ОПЫТ (для рангов): задания + подземелье. Не уменьшается
+        # при трате руды; уменьшается только при clawback за отписку.
+        "xp": "INTEGER DEFAULT 0",
     },
     "referrals": {
         # Наивысший ранг рекрута, за который агенту уже выплачена награда
@@ -208,6 +211,7 @@ _NEW_COLUMNS = {
 
 async def run_migrations(db) -> None:
     await db.executescript(_NEW_TABLES)
+    xp_added = False
     for table, columns in _NEW_COLUMNS.items():
         async with db.execute(f"PRAGMA table_info({table})") as cur:
             existing = {row["name"] for row in await cur.fetchall()}
@@ -215,5 +219,21 @@ async def run_migrations(db) -> None:
             if name not in existing:
                 await db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
                 logger.info(f"DB migrate: {table}.{name} added")
+                if table == "wallets" and name == "xp":
+                    xp_added = True
     await db.commit()
+
+    # Бэкфилл опыта при первом появлении колонки: переносим уже заработанное
+    # заданиями (сумма наград засчитанных подписок), чтобы ранги не сбросились.
+    if xp_added:
+        await db.execute(
+            """UPDATE wallets SET xp = COALESCE((
+                   SELECT COUNT(*) * 100 FROM task_completions tc
+                   JOIN tasks t ON t.id = tc.task_id
+                   WHERE tc.user_id = wallets.user_id
+                     AND tc.status = 'credited' AND t.type = 'channel_sub'
+               ), 0)"""
+        )
+        await db.commit()
+        logger.info("DB migrate: wallets.xp backfilled from credited subscriptions")
     logger.info("Growth-stage migrations applied")
