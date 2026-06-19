@@ -86,3 +86,44 @@ async def answer_with_banner(
         reply_markup=reply_markup,
         disable_web_page_preview=disable_web_page_preview,
     )
+
+
+async def edit_screen(
+    message: Message,
+    text: str,
+    *,
+    reply_markup=None,
+    parse_mode: str = "HTML",
+    disable_web_page_preview: bool = True,
+) -> Message | None:
+    """Редактирует сообщение «на месте» для кнопочной навигации (drill-down).
+
+    Если сообщение с фото-баннером — правим caption (лимит 1024), иначе text
+    (лимит 4096). При сбое (например, текст не влез в caption) — отправляем
+    новое сообщение, чтобы навигация никогда не «зависала».
+    """
+    try:
+        if message.photo and len(text) <= _CAPTION_LIMIT:
+            return await message.edit_caption(
+                caption=text, parse_mode=parse_mode, reply_markup=reply_markup
+            )
+        if not message.photo:
+            return await message.edit_text(
+                text,
+                parse_mode=parse_mode,
+                reply_markup=reply_markup,
+                disable_web_page_preview=disable_web_page_preview,
+            )
+    except Exception as e:
+        logger.warning(f"[EDIT_SCREEN] edit failed: {e}")
+    # Фото с длинным текстом или ошибка → новое сообщение.
+    try:
+        return await message.answer(
+            text,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup,
+            disable_web_page_preview=disable_web_page_preview,
+        )
+    except Exception as e:
+        logger.warning(f"[EDIT_SCREEN] answer fallback failed: {e}")
+        return None

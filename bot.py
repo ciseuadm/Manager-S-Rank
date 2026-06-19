@@ -23,10 +23,11 @@ from database import init_db, close_db
 from handlers import (
     moderation_router, admin_router, user_router, settings_router,
     owner_router, economy_router, referral_router, payments_router,
-    ads_router, sponsors_router, tasks_router, cursor_router, fun_router, set_bot_id,
+    ads_router, sponsors_router, tasks_router, cursor_router, fun_router,
+    menu_router, set_bot_id,
 )
 from services.cursor_bridge import bridge as cursor_bridge
-from middlewares import ThrottleMiddleware, SubGateMiddleware
+from middlewares import ThrottleMiddleware, SubGateMiddleware, EmojiFallbackMiddleware
 from scheduler import setup_scheduler
 from utils import set_owner_id, set_config
 
@@ -94,6 +95,7 @@ PUBLIC_COMMANDS = [
 # Commands shown only in private chat with the bot.
 PRIVATE_COMMANDS = [
     BotCommand(command="start", description="⚡ Главное меню бота"),
+    BotCommand(command="menu", description="📲 Меню в кнопках (всё сразу)"),
     BotCommand(command="dungeon", description="🏰 Подземелье: до 50 руды/день"),
     BotCommand(command="wallet", description="🔹 Хранилище Мана-руды"),
     BotCommand(command="tasks", description="📋 Задания: +100 руды за подписку"),
@@ -253,6 +255,9 @@ async def main() -> None:
         token=config.token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
+    # Премиум-эмодзи: если Telegram отвергнет <tg-emoji> (нет Premium у владельца
+    # или это пост канала) — автоматически повторяем запрос с обычными эмодзи.
+    bot.session.middleware(EmojiFallbackMiddleware())
     dp = Dispatcher(storage=MemoryStorage())
 
     # Middlewares — throttle messages and inline-button taps (anti-flood / anti-spam).
@@ -266,6 +271,7 @@ async def main() -> None:
 
     # Routers — order matters: moderation last so admin commands take priority
     dp.include_router(owner_router)
+    dp.include_router(menu_router)
     dp.include_router(tasks_router)
     dp.include_router(sponsors_router)
     dp.include_router(ads_router)

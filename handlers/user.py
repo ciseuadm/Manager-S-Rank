@@ -66,8 +66,13 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot) -> None:
         banner, text = "earn", EARN_MSG
     else:
         banner, text = "start", START_MSG
+    # В личке сразу даём кнопку в кнопочное меню — без заучивания команд.
+    markup = None
+    if message.chat.type == "private":
+        from keyboards import main_menu_keyboard
+        markup = main_menu_keyboard()
     try:
-        await answer_with_banner(message, banner, text)
+        await answer_with_banner(message, banner, text, reply_markup=markup)
     except Exception as e:
         logger.warning(f"[START] send failed: {e}")
 
@@ -82,7 +87,10 @@ async def cb_subgate_check(call: CallbackQuery, bot: Bot) -> None:
         except Exception:
             pass
         try:
-            await answer_with_banner(call.message, "start", START_MSG)
+            from keyboards import main_menu_keyboard
+            await answer_with_banner(
+                call.message, "start", START_MSG, reply_markup=main_menu_keyboard()
+            )
         except Exception as e:
             logger.warning(f"[SUBGATE] welcome send failed: {e}")
     else:

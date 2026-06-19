@@ -6,16 +6,18 @@ from aiogram import Router, F, Bot
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
 
+from aiogram.types import InlineKeyboardButton
+
 from database import get_top_mana, get_or_create_user
 from services.economy import wallet_of, transfer_mana, balance_of
 from services import vip_status
-from keyboards import shop_keyboard
+from keyboards import shop_keyboard, shop_back_keyboard
 from utils import (
-    mention_html, mention_html_raw, escape_html, format_mana, get_config,
+    mention_html, mention_html_raw, escape_html, format_mana, get_config, ce,
     WALLET_MSG, TRANSFER_OK_MSG, TRANSFER_HELP, MANA_TOP_MSG,
     SHOP_MSG, COMING_SOON_MSG, VIP_PROGRESS_MSG, VIP_OPEN_MSG,
 )
-from utils.media import answer_with_banner
+from utils.media import answer_with_banner, edit_screen
 
 router = Router()
 
@@ -112,41 +114,69 @@ async def cmd_shop(message: Message) -> None:
     )
 
 
+async def _shop_root_markup(user_id: int, from_menu: bool):
+    _, _, is_vip = await vip_status(user_id)
+    return shop_keyboard(is_vip, from_menu=from_menu)
+
+
 @router.callback_query(F.data.startswith("shop:"))
 async def cb_shop(call: CallbackQuery) -> None:
     action = call.data.split(":")[1]
     cfg = get_config()
+    msg = call.message
+    is_private = bool(msg and msg.chat and msg.chat.type == "private")
 
     if action == "close":
         try:
-            await call.message.delete()
+            await msg.delete()
         except Exception:
             pass
         await call.answer()
         return
 
-    if action == "buy":
-        await call.message.answer(
-            "💎 Открой бота в ЛС и отправь <b>/buy</b>, чтобы пополнить руду за Telegram Stars ⭐.",
-            parse_mode="HTML",
+    # Корень магазина (вход и кнопка «В магазин» из подэкранов) — правим на месте.
+    if action == "root":
+        bal = await balance_of(call.from_user.id)
+        await edit_screen(
+            msg, SHOP_MSG.format(balance=format_mana(bal)),
+            reply_markup=await _shop_root_markup(call.from_user.id, is_private),
         )
+        await call.answer()
+        return
+
+    if action == "buy":
+        bot_uname = cfg.bot_username
+        extra = None
+        if not is_private and bot_uname:
+            extra = [InlineKeyboardButton(
+                text="💳 Открыть бота и купить", url=f"https://t.me/{bot_uname}?start=buy"
+            )]
+        text = (
+            f"{ce('gem')} <b>ПОПОЛНЕНИЕ МАНА-РУДЫ</b>\n\n"
+            f"Купи руду за Telegram Stars {ce('star')} — быстро и официально.\n"
+            "Открой бота в личке и отправь команду <b>/buy</b> "
+            "(или выбери пакет в разделе покупки).\n\n"
+            "<i>Stars пополняются прямо в Telegram, без внешних кошельков.</i>"
+        )
+        await edit_screen(msg, text, reply_markup=shop_back_keyboard(extra))
         await call.answer()
         return
 
     if action == "gifts":
-        await call.answer()
         from utils.redeem_ui import redeem_intro, redeem_keyboard
         bal = await balance_of(call.from_user.id)
-        await call.message.answer(
-            redeem_intro(bal),
-            parse_mode="HTML",
-            reply_markup=redeem_keyboard(bal).as_markup(),
+        kb = redeem_keyboard(bal)
+        kb.row(
+            InlineKeyboardButton(text="⬅️ В магазин", callback_data="shop:root"),
+            InlineKeyboardButton(text="✖ Закрыть", callback_data="shop:close"),
         )
+        await edit_screen(msg, redeem_intro(bal), reply_markup=kb.as_markup())
+        await call.answer()
         return
 
     if action in ("premium", "ads"):
+        await edit_screen(msg, COMING_SOON_MSG, reply_markup=shop_back_keyboard())
         await call.answer()
-        await call.message.answer(COMING_SOON_MSG, parse_mode="HTML")
         return
 
     if action == "vip":
@@ -157,8 +187,8 @@ async def cb_shop(call: CallbackQuery) -> None:
             text = VIP_PROGRESS_MSG.format(
                 threshold=threshold, count=count, left=max(0, threshold - count)
             )
+        await edit_screen(msg, text, reply_markup=shop_back_keyboard())
         await call.answer()
-        await call.message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
         return
 
     await call.answer()

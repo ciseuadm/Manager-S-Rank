@@ -49,6 +49,7 @@ PANEL_MSG = (
     "/gstats — глобальная статистика (чаты, экономика, доход, реклама)\n"
     "/bank — 🏦 центральный банк: приход, долг рудой, эмиссия, профит\n"
     "/announce — 📣 опубликовать пост в канал бота\n"
+    "/emojiid — 🧩 узнать ID премиум-эмодзи (для красивых постов)\n"
     "/chats — список всех чатов бота\n"
     "/broadcast <code>текст</code> — рассылка во все чаты\n"
     "   ↳ или ответь на сообщение командой /broadcast\n"
@@ -210,6 +211,45 @@ async def cmd_gstats(message: Message) -> None:
 @router.message(Command("bank", "pl", "treasury"))
 async def cmd_bank(message: Message) -> None:
     await message.answer(await _bank_text(), parse_mode="HTML")
+
+
+# ── /emojiid — извлечь custom_emoji_id из присланных премиум-эмодзи ─────────────
+
+@router.message(Command("emojiid", "emoji", "ce"))
+async def cmd_emojiid(message: Message) -> None:
+    """Владелец шлёт премиум-эмодзи (в этом же сообщении после команды или
+    ответом на сообщение с ними) — бот вернёт копируемые custom_emoji_id."""
+    src = message.reply_to_message or message
+    text = src.text or src.caption or ""
+    entities = list(src.entities or []) + list(src.caption_entities or [])
+    found = [
+        (e.custom_emoji_id, e.extract_from(text))
+        for e in entities
+        if e.type == "custom_emoji" and e.custom_emoji_id
+    ]
+    if not found:
+        await message.answer(
+            "🧩 <b>Как получить ID премиум-эмодзи</b>\n\n"
+            "1) Включи Telegram Premium на своём аккаунте.\n"
+            "2) Пришли мне <b>/emojiid</b> и сразу — нужные премиум-эмодзи "
+            "(в одном сообщении), либо <b>ответь</b> командой на сообщение с ними.\n"
+            "3) Я верну список <code>emoji-id</code> — впишешь их в "
+            "<code>utils/premium_emoji.py</code>.\n\n"
+            "<i>Обычные (не премиум) эмодзи ID не имеют — нужны именно премиум.</i>",
+            parse_mode="HTML",
+        )
+        return
+
+    lines = ["🧩 <b>НАЙДЕННЫЕ ПРЕМИУМ-ЭМОДЗИ</b>\n",
+             "Скопируй id в <code>utils/premium_emoji.py</code> → поле \"id\":\n"]
+    block = "\n".join(f'{alt}  →  {eid}' for eid, alt in found)
+    lines.append(f"<pre>{escape_html(block)}</pre>")
+    lines.append(
+        "\nГотовый HTML-тег (можно проверить отправкой):\n"
+        + "\n".join(f'{alt}: <code>&lt;tg-emoji emoji-id="{eid}"&gt;{escape_html(alt)}&lt;/tg-emoji&gt;</code>'
+                    for eid, alt in found)
+    )
+    await message.answer("\n".join(lines), parse_mode="HTML")
 
 
 # ── /announce — публикация маркетинговых постов в канал ─────────────────────────

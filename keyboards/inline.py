@@ -113,7 +113,43 @@ def welcome_keyboard(bot_username: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def shop_keyboard(is_vip: bool = False) -> InlineKeyboardMarkup:
+def main_menu_keyboard() -> InlineKeyboardMarkup:
+    """Главный кнопочный хаб (личка): всё важное в одном сообщении, без команд."""
+    b = InlineKeyboardBuilder()
+    b.row(
+        InlineKeyboardButton(text="👤 Профиль", callback_data="menu:profile"),
+        InlineKeyboardButton(text="🔹 Кошелёк", callback_data="menu:wallet"),
+    )
+    b.row(
+        InlineKeyboardButton(text="📋 Задания", callback_data="menu:tasks"),
+        InlineKeyboardButton(text="🎁 Подарки", callback_data="menu:gifts"),
+    )
+    b.row(
+        InlineKeyboardButton(text="🛒 Магазин", callback_data="menu:shop"),
+        InlineKeyboardButton(text="🕴 Доход / друзья", callback_data="menu:ref"),
+    )
+    b.row(
+        InlineKeyboardButton(text="👑 Привилегии", callback_data="menu:perks"),
+        InlineKeyboardButton(text="❓ Помощь", callback_data="menu:help"),
+    )
+    b.row(InlineKeyboardButton(text="✖ Закрыть", callback_data="menu:close"))
+    return b.as_markup()
+
+
+def menu_nav_keyboard(*extra_rows: list[InlineKeyboardButton]) -> InlineKeyboardMarkup:
+    """Низ подэкрана меню: пользовательские кнопки + «Назад в меню» / «Закрыть»."""
+    b = InlineKeyboardBuilder()
+    for row in extra_rows:
+        if row:
+            b.row(*row)
+    b.row(
+        InlineKeyboardButton(text="⬅️ В меню", callback_data="menu:root"),
+        InlineKeyboardButton(text="✖ Закрыть", callback_data="menu:close"),
+    )
+    return b.as_markup()
+
+
+def shop_keyboard(is_vip: bool = False, from_menu: bool = False) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="💎 Купить руду за ⭐", callback_data="shop:buy"),
@@ -131,10 +167,28 @@ def shop_keyboard(is_vip: bool = False) -> InlineKeyboardMarkup:
             callback_data="shop:vip",
         ),
     )
-    builder.row(
+    if from_menu:
+        builder.row(
+            InlineKeyboardButton(text="⬅️ В меню", callback_data="menu:root"),
+            InlineKeyboardButton(text="✖ Закрыть", callback_data="shop:close"),
+        )
+    else:
+        builder.row(
+            InlineKeyboardButton(text="✖ Закрыть", callback_data="shop:close"),
+        )
+    return builder.as_markup()
+
+
+def shop_back_keyboard(extra: list[InlineKeyboardButton] | None = None) -> InlineKeyboardMarkup:
+    """Низ подэкрана магазина: доп.кнопки + «В магазин» / «Закрыть»."""
+    b = InlineKeyboardBuilder()
+    if extra:
+        b.row(*extra)
+    b.row(
+        InlineKeyboardButton(text="⬅️ В магазин", callback_data="shop:root"),
         InlineKeyboardButton(text="✖ Закрыть", callback_data="shop:close"),
     )
-    return builder.as_markup()
+    return b.as_markup()
 
 
 def owner_keyboard() -> InlineKeyboardMarkup:

@@ -25,6 +25,7 @@ from .helpers import (
     require_admin, set_config, get_config,
 )
 from .mana import format_mana, mana_word
+from .premium_emoji import ce, has_premium, strip_custom_emoji, E as PREMIUM_EMOJI
 
 __all__ = [
     "calculate_rank", "get_rank_info", "get_rank_label",
@@ -49,4 +50,5 @@ __all__ = [
     "set_owner_id", "get_owner_id", "is_owner", "is_chat_admin", "is_chat_staff",
     "require_admin", "set_config", "get_config",
     "format_mana", "mana_word",
+    "ce", "has_premium", "strip_custom_emoji", "PREMIUM_EMOJI",
 ]

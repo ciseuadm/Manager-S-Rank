@@ -17,7 +17,7 @@ from aiogram.types import InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 
-from utils import get_config
+from utils import get_config, ce
 
 GATE_CALLBACK = "subgate:check"
 
@@ -33,10 +33,10 @@ def invalidate_gate_cache(user_id: int) -> None:
     _pass_cache.pop(user_id, None)
 
 GATE_TEXT = (
-    "🔒 <b>СИСТЕМА: ДОСТУП ЗАКРЫТ</b>\n\n"
+    f"{ce('lock')} <b>СИСТЕМА: ДОСТУП ЗАКРЫТ</b>\n\n"
     "Прежде чем войти в подземелье, охотник обязан вступить в <b>гильдию Системы</b> "
     "— официальный канал бота.\n\n"
-    "📢 Там — анонсы, награды и секреты прокачки.\n\n"
+    f"{ce('megaphone')} Там — анонсы, награды и секреты прокачки.\n\n"
     "<b>1.</b> Нажми «Вступить в гильдию» и подпишись.\n"
     "<b>2.</b> Вернись и нажми «✅ Я подписался».\n\n"
     "<i>После этого Система откроет тебе все возможности.</i>"
