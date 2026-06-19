@@ -15,12 +15,15 @@ from aiogram import Router, F, Bot
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, LabeledPrice
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import InlineKeyboardButton
 
 from database import list_ad_requests, get_ad_request
-from services import submit_ad_request, approve_ad_request, reject_ad_request, end_sponsorship
+from services import (
+    submit_ad_request, approve_ad_request, reject_ad_request, end_sponsorship,
+    ad_price_stars,
+)
 from services.sponsors import _to_chat_ref
 from utils import escape_html, is_owner, get_config
 
@@ -124,26 +127,74 @@ async def adreq_type(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
     data = await state.get_data()
     await state.clear()
     user = call.from_user
+    cfg = get_config()
+    target = data.get("target_subs", 0)
 
+    await call.message.edit_reply_markup(reply_markup=None)
+    await call.answer()
+
+    # Self-serve: создаём заявку как «ожидает оплаты» и выставляем счёт в Stars
+    # (эскроу). В очередь модерации заявка попадёт только после оплаты, а само
+    # задание — только после ручного одобрения владельцем.
+    if cfg.ad_self_serve_enabled and cfg.payments_enabled:
+        price = ad_price_stars(target)
+        req_id = await submit_ad_request(
+            advertiser_id=user.id,
+            advertiser_name=user.full_name or user.username or str(user.id),
+            channel_url=data.get("channel_url", ""),
+            channel_username=data.get("channel_username", ""),
+            description=data.get("description", ""),
+            target_subs=target,
+            sponsor_type=sponsor_type,
+            status="awaiting_payment",
+        )
+        try:
+            await bot.send_invoice(
+                chat_id=user.id,
+                title=f"Реклама канала @{data.get('channel_username','')}"[:32],
+                description=(
+                    f"Привод {target} подписчиков руками охотников. "
+                    f"Деньги в эскроу: при отклонении — полный возврат."
+                ),
+                payload=f"adreq:{req_id}",
+                currency="XTR",
+                prices=[LabeledPrice(label=f"{target} подписчиков", amount=price)],
+                provider_token="",
+            )
+            await call.message.answer(
+                "🧾 <b>Счёт выставлен!</b>\n\n"
+                f"Канал: <code>@{escape_html(data.get('channel_username',''))}</code>\n"
+                f"Подписчиков: <b>{target}</b> · формат: "
+                f"<b>{'постоянный' if sponsor_type=='permanent' else 'разовый'}</b>\n"
+                f"Стоимость: <b>{price}⭐</b>\n\n"
+                "Оплати счёт выше. Деньги держатся в эскроу: если заявку отклонят — "
+                "вернём полностью. Задание запускается только после ручного одобрения.",
+                parse_mode="HTML",
+            )
+        except Exception:
+            await call.message.answer(
+                "⚠️ Не удалось выставить счёт. Открой бота в личке и повтори /advertise."
+            )
+        return
+
+    # Фолбэк (оплата выключена): бесплатная заявка с ручной оплатой вне бота.
     req_id = await submit_ad_request(
         advertiser_id=user.id,
         advertiser_name=user.full_name or user.username or str(user.id),
         channel_url=data.get("channel_url", ""),
         channel_username=data.get("channel_username", ""),
         description=data.get("description", ""),
-        target_subs=data.get("target_subs", 0),
+        target_subs=target,
         sponsor_type=sponsor_type,
     )
-    await call.message.edit_reply_markup(reply_markup=None)
     await call.message.answer(
         "✅ <b>Заявка отправлена на модерацию!</b>\n\n"
         f"Канал: <code>@{escape_html(data.get('channel_username',''))}</code>\n"
-        f"Подписчиков: <b>{data.get('target_subs', 0)}</b>\n"
+        f"Подписчиков: <b>{target}</b>\n"
         f"Формат: <b>{'постоянный' if sponsor_type=='permanent' else 'разовый'}</b>\n\n"
         "Мы свяжемся для оплаты и запуска. Спасибо!",
         parse_mode="HTML",
     )
-    await call.answer()
     await _notify_owner_new_request(bot, req_id)
 
 
@@ -152,6 +203,10 @@ async def _notify_owner_new_request(bot: Bot, req_id: int) -> None:
     req = await get_ad_request(req_id)
     if not req or not cfg.owner_id:
         return
+    paid_line = (
+        f"💰 Оплачено: <b>{req.get('stars_paid', 0)}⭐</b> (эскроу — вернётся при отклонении)\n"
+        if req.get("paid") else ""
+    )
     text = (
         "📥 <b>НОВАЯ ЗАЯВКА НА РЕКЛАМУ</b>\n\n"
         f"🆔 <code>#{req['id']}</code>\n"
@@ -160,6 +215,7 @@ async def _notify_owner_new_request(bot: Bot, req_id: int) -> None:
         f"📝 Описание: {escape_html(req.get('description') or '')}\n"
         f"🎯 Хочет подписчиков: <b>{req.get('target_subs', 0)}</b>\n"
         f"📦 Формат: <b>{'постоянный' if req.get('sponsor_type')=='permanent' else 'разовый'}</b>\n"
+        f"{paid_line}"
         f"👤 От: {escape_html(req.get('advertiser_name') or '')} "
         f"(<code>{req.get('advertiser_id')}</code>)\n\n"
         "⚠️ Перед одобрением убедись, что бот — <b>админ</b> в канале."

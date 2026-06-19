@@ -31,6 +31,7 @@ from .guilds import (
 )
 from .ad_requests import (
     create_ad_request, get_ad_request, list_ad_requests, set_ad_request_status,
+    mark_ad_request_paid,
 )
 from .ads import (
     create_campaign, get_active_campaigns, get_all_campaigns, get_campaign,
@@ -62,6 +63,8 @@ from .tasks import (
     record_completion, get_credited_channel_completions, mark_completion_reverted,
     mark_completion_released, end_task_sponsorship,
     get_user_channel_task_completions,
+    get_completion_by_id, list_pending_completions, set_completion_status,
+    has_pending_completion,
     create_payout_request, get_payout_request, list_payout_requests, set_payout_status,
     payout_cost_summary, sponsor_revenue_cents,
     has_achievement, count_achievement, award_achievement,
@@ -98,6 +101,7 @@ __all__ = [
     "guild_member_count", "guild_rank_counts", "top_guilds",
     # ad requests
     "create_ad_request", "get_ad_request", "list_ad_requests", "set_ad_request_status",
+    "mark_ad_request_paid",
     # ads
     "create_campaign", "get_active_campaigns", "get_all_campaigns", "get_campaign",
     "set_campaign_status", "delete_campaign", "mark_campaign_sent", "log_impression",
@@ -119,6 +123,8 @@ __all__ = [
     "record_completion", "get_credited_channel_completions", "mark_completion_reverted",
     "mark_completion_released", "end_task_sponsorship",
     "get_user_channel_task_completions",
+    "get_completion_by_id", "list_pending_completions", "set_completion_status",
+    "has_pending_completion",
     "create_payout_request", "get_payout_request", "list_payout_requests", "set_payout_status",
     "payout_cost_summary", "sponsor_revenue_cents",
     "has_achievement", "count_achievement", "award_achievement",

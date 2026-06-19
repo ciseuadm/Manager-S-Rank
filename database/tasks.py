@@ -18,17 +18,20 @@ async def create_task(
     url: str, reward: int, revenue_cents: int, daily: int, created_by: int,
     sponsor_type: str = "house", advertiser_id: int = 0, anonymous: int = 1,
     description: str = "", target_subs: int = 0, guarantee_days: int = 0,
+    verify_mode: str = "membership", duration_sec: int = 0, answer: str = "",
 ) -> int:
     db = await get_db()
     cur = await db.execute(
         """INSERT INTO tasks
            (type, title, channel_id, channel_username, url, reward,
             revenue_cents, daily, created_by, sponsor_type, advertiser_id,
-            anonymous, description, target_subs, guarantee_days)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            anonymous, description, target_subs, guarantee_days,
+            verify_mode, duration_sec, answer)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (type, title, channel_id, channel_username, url, reward,
          revenue_cents, daily, created_by, sponsor_type, advertiser_id,
-         anonymous, description, target_subs, guarantee_days),
+         anonymous, description, target_subs, guarantee_days,
+         verify_mode, duration_sec, answer.lower()),
     )
     await db.commit()
     return cur.lastrowid
@@ -102,20 +105,65 @@ async def get_completed_task_ids(user_id: int) -> set[int]:
 
 
 async def record_completion(
-    task_id: int, user_id: int, reward: int, status: str = "credited"
+    task_id: int, user_id: int, reward: int, status: str = "credited",
+    proof: str = "",
 ) -> bool:
     """Insert a completion. Returns False if it already exists (duplicate)."""
     db = await get_db()
     try:
         await db.execute(
-            """INSERT INTO task_completions (task_id, user_id, reward, status)
-               VALUES (?, ?, ?, ?)""",
-            (task_id, user_id, reward, status),
+            """INSERT INTO task_completions (task_id, user_id, reward, status, proof)
+               VALUES (?, ?, ?, ?, ?)""",
+            (task_id, user_id, reward, status, proof),
         )
         await db.commit()
         return True
     except Exception:
         return False
+
+
+# ── Pending proofs (ручная модерация выполнений 'proof'-заданий) ──────────────
+
+async def get_completion_by_id(comp_id: int) -> Optional[dict]:
+    db = await get_db()
+    async with db.execute(
+        "SELECT * FROM task_completions WHERE id = ?", (comp_id,)
+    ) as cur:
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def list_pending_completions(limit: int = 30) -> list[dict]:
+    """Выполнения 'proof'-заданий в статусе pending — для очереди владельца."""
+    db = await get_db()
+    async with db.execute(
+        """SELECT tc.id AS comp_id, tc.task_id, tc.user_id, tc.reward, tc.proof,
+                  tc.created_at, t.title, t.type
+           FROM task_completions tc JOIN tasks t ON t.id = tc.task_id
+           WHERE tc.status = 'pending'
+           ORDER BY tc.id ASC LIMIT ?""",
+        (limit,),
+    ) as cur:
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def set_completion_status(comp_id: int, status: str) -> None:
+    db = await get_db()
+    await db.execute(
+        "UPDATE task_completions SET status = ?, checked_at = datetime('now') WHERE id = ?",
+        (status, comp_id),
+    )
+    await db.commit()
+
+
+async def has_pending_completion(task_id: int, user_id: int) -> bool:
+    db = await get_db()
+    async with db.execute(
+        "SELECT 1 FROM task_completions WHERE task_id = ? AND user_id = ? AND status = 'pending'",
+        (task_id, user_id),
+    ) as cur:
+        return await cur.fetchone() is not None
 
 
 async def count_user_completions_today(user_id: int) -> int:

@@ -43,6 +43,13 @@ class Config:
     sponsor_temp_guarantee_days: int = 7
     # Постоянный спонсор после отмены: ещё столько дней держим гарантию.
     sponsor_post_cancel_grace_days: int = 7
+    # Self-serve реклама: рекламодатель платит Stars в эскроу при подаче заявки.
+    # Цена = max(ad_min_stars, target_subs × ad_price_per_sub_stars). Деньги
+    # держатся ботом; при отклонении заявки — авто-возврат. Авто-публикации нет:
+    # задание создаётся ТОЛЬКО после ручного одобрения владельцем.
+    ad_self_serve_enabled: bool = True
+    ad_price_per_sub_stars: int = 1
+    ad_min_stars: int = 50
 
     # ── Ежедневное подземелье (бесплатный крючок) ────────────────────────────
     # /dungeon раз в день (ТОЛЬКО в чатах — бесплатная реклама): база + бонус
@@ -179,6 +186,9 @@ def load_config() -> Config:
         mana_transfer_fee_pct=_get_int("MANA_TRANSFER_FEE_PCT", 5),
         sponsor_temp_guarantee_days=_get_int("SPONSOR_TEMP_GUARANTEE_DAYS", 7),
         sponsor_post_cancel_grace_days=_get_int("SPONSOR_POST_CANCEL_GRACE_DAYS", 7),
+        ad_self_serve_enabled=_get_bool("AD_SELF_SERVE_ENABLED", True),
+        ad_price_per_sub_stars=_get_int("AD_PRICE_PER_SUB_STARS", 1),
+        ad_min_stars=_get_int("AD_MIN_STARS", 50),
         daily_dungeon_base=_get_int("DAILY_DUNGEON_BASE", 25),
         daily_dungeon_ad_bonus=_get_int("DAILY_DUNGEON_AD_BONUS", 25),
         dungeon_streak_milestone=_get_int("DUNGEON_STREAK_MILESTONE", 30),

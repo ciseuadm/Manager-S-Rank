@@ -146,6 +146,8 @@ async def on_pre_checkout(query: PreCheckoutQuery) -> None:
         payload.startswith("mana:")
         and payload.split(":", 1)[1].isdigit()
         and int(payload.split(":", 1)[1]) in _PACKS_BY_ID
+    ) or (
+        payload.startswith("adreq:") and payload.split(":", 1)[1].isdigit()
     )
     if ok:
         await query.answer(ok=True)
@@ -190,6 +192,25 @@ async def on_successful_payment(message: Message) -> None:
             f"Бонусом: <b>{format_mana(bonus)}</b>",
             parse_mode="HTML",
         )
+    elif payload.startswith("adreq:"):
+        # Self-serve реклама: оплата в эскроу. Задание НЕ создаётся автоматически —
+        # заявка лишь встаёт в очередь ручной модерации владельца.
+        from services import confirm_ad_payment
+        req_id = int(payload.split(":", 1)[1])
+        await add_payment(user_id, stars, "ad", str(req_id), charge_id)
+        req = await confirm_ad_payment(req_id, stars, charge_id)
+        await message.answer(
+            "✅ <b>Оплата получена!</b>\n\n"
+            f"Заявка №{req_id} ушла на модерацию. Деньги в эскроу: если канал "
+            "не подойдёт — вернём полностью. Уведомим о запуске. Спасибо!",
+            parse_mode="HTML",
+        )
+        if req:
+            try:
+                from handlers.sponsors import _notify_owner_new_request
+                await _notify_owner_new_request(message.bot, req_id)
+            except Exception as e:
+                logger.warning(f"[PAY] owner notify (adreq) failed: {e}")
     else:
         await add_payment(user_id, stars, "unknown", payload, charge_id)
 

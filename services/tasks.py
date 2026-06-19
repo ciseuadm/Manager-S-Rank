@@ -14,6 +14,8 @@ from typing import Optional
 from aiogram import Bot
 from loguru import logger
 
+import time
+
 from database import (
     get_task, get_active_tasks, get_completion, get_completed_task_ids,
     record_completion, add_mana, spend_mana, get_wallet_balance,
@@ -21,10 +23,35 @@ from database import (
     create_payout_request, count_user_credited_subs, add_xp, get_xp,
     award_achievement_capped, count_achievement,
     get_user_channel_task_completions, count_user_completions_today,
+    get_completion_by_id, set_completion_status, has_pending_completion,
 )
 from utils import (
     get_config, calculate_rank, rank_reward_multiplier,
 )
+
+
+# ── Типы заданий и режимы проверки ───────────────────────────────────────────
+# Любое задание создаёт ТОЛЬКО владелец (ручное одобрение) — фрод-задания
+# исключены на входе. Режим проверки выбирается автоматически по типу:
+#   membership — подписка/вступление (Bot API: get_chat_member) — авто;
+#   timer      — просмотр N секунд (таймер внутри бота) — авто;
+#   quiz       — верный ответ (сверка с эталоном) — авто;
+#   proof      — ручной пруф (react/boost/bot_start/external/UGC): выполнение
+#                уходит в очередь, владелец подтверждает/отклоняет.
+_VERIFY_BY_TYPE = {
+    "channel_sub": "membership",
+    "chat_join": "membership",
+    "watch": "timer",
+    "quiz": "quiz",
+}
+
+
+def default_verify_mode(task_type: str) -> str:
+    return _VERIFY_BY_TYPE.get(task_type, "proof")
+
+
+# Старт таймера просмотра в памяти процесса: (user_id, task_id) -> monotonic ts.
+_watch_starts: dict[tuple[int, int], float] = {}
 
 
 # ── Экономика ────────────────────────────────────────────────────────────────
@@ -281,6 +308,169 @@ async def check_and_credit_subscription(
             pass
 
     return "credited", reward
+
+
+async def _grant_generic(
+    bot: Bot, task: dict, user_id: int, rank: str, reason: str
+) -> tuple[str, int]:
+    """Начисление за не-channel_sub задание (без стрика подписок).
+    reward = base × множитель ранга. Один раз на охотника."""
+    base = task.get("reward", 0)
+    reward = int(round(base * rank_reward_multiplier(rank)))
+    created = await record_completion(task["id"], user_id, reward, "credited")
+    if not created:
+        return "already", reward
+    await add_mana(user_id, reward, reason, ref_id=str(task["id"]))
+    from utils import XP_PER_TASK
+    await add_xp(user_id, XP_PER_TASK)
+    logger.info(f"[TASKS] credited({task.get('type')}) user={user_id} task={task['id']} +{reward}")
+    await check_milestones(bot, user_id)
+    try:
+        from .ranks import sync_rank
+        await sync_rank(bot, user_id)
+    except Exception:
+        pass
+    target = task.get("target_subs", 0) or 0
+    if target > 0:
+        try:
+            if await task_completions_count(task["id"]) >= target:
+                await set_task_active(task["id"], 0)
+        except Exception:
+            pass
+    return "credited", reward
+
+
+async def check_and_credit_task(
+    bot: Bot, user_id: int, task_id: int, payload: str = ""
+) -> tuple[str, int]:
+    """
+    Универсальная проверка/начисление по любому типу задания. Диспетчеризует по
+    verify_mode. Коды результата (надстройка над channel_sub):
+      'credited' | 'already' | 'inactive' | 'locked' | 'daily_limit'
+      | 'not_subscribed'                       (membership)
+      | 'watch_started' | 'watch_wait'         (timer; reward=сек)
+      | 'wrong_answer'                         (quiz)
+      | 'proof_submitted' | 'proof_pending'    (proof)
+      | 'misconfig'
+    """
+    task = await get_task(task_id)
+    if not task or not task.get("active"):
+        return "inactive", 0
+    ttype = task.get("type", "channel_sub")
+    if ttype == "channel_sub":
+        return await check_and_credit_subscription(bot, user_id, task_id)
+
+    mode = task.get("verify_mode") or default_verify_mode(ttype)
+    if mode == "timer":
+        return await watch_claim(bot, user_id, task_id)
+
+    existing = await get_completion(task_id, user_id)
+    if existing and existing.get("status") == "credited":
+        return "already", task.get("reward", 0)
+
+    # Гейт обязательств перед прошлыми спонсорами действует для всех типов.
+    blockers = await find_unsubscribed_channels(bot, user_id, exclude_task_id=task_id)
+    if blockers:
+        return "locked", 0
+
+    rank = calculate_rank(await get_xp(user_id))
+
+    if mode == "proof":
+        if await has_pending_completion(task_id, user_id):
+            return "proof_pending", 0
+        await record_completion(task_id, user_id, task.get("reward", 0), "pending", proof=payload)
+        logger.info(f"[TASKS] proof submitted user={user_id} task={task_id}")
+        return "proof_submitted", 0
+
+    # membership / quiz потребляют дневной лимит при зачёте.
+    if await count_user_completions_today(user_id) >= effective_daily_limit(rank):
+        return "daily_limit", 0
+
+    if mode == "membership":
+        channel_id = task.get("channel_id")
+        if not channel_id:
+            return "misconfig", 0
+        try:
+            member = await bot.get_chat_member(channel_id, user_id)
+        except Exception as e:
+            logger.warning(f"[TASKS] get_chat_member failed task={task_id}: {e}")
+            return "misconfig", 0
+        if not _is_subscribed(member):
+            return "not_subscribed", task.get("reward", 0)
+        return await _grant_generic(bot, task, user_id, rank, f"task_{ttype}")
+
+    if mode == "quiz":
+        answer = (task.get("answer") or "").strip().lower()
+        if not answer:
+            return "misconfig", 0
+        if (payload or "").strip().lower() != answer:
+            return "wrong_answer", 0
+        return await _grant_generic(bot, task, user_id, rank, "task_quiz")
+
+    return "misconfig", 0
+
+
+async def watch_claim(bot: Bot, user_id: int, task_id: int) -> tuple[str, int]:
+    """Задание-просмотр: первый клик стартует таймер, повторный (после
+    duration_sec) — засчитывает. reward в кодах watch_* = секунды."""
+    task = await get_task(task_id)
+    if not task or not task.get("active"):
+        return "inactive", 0
+    existing = await get_completion(task_id, user_id)
+    if existing and existing.get("status") == "credited":
+        return "already", task.get("reward", 0)
+
+    blockers = await find_unsubscribed_channels(bot, user_id, exclude_task_id=task_id)
+    if blockers:
+        return "locked", 0
+
+    rank = calculate_rank(await get_xp(user_id))
+    if await count_user_completions_today(user_id) >= effective_daily_limit(rank):
+        return "daily_limit", 0
+
+    duration = int(task.get("duration_sec", 0) or 30)
+    key = (user_id, task_id)
+    start = _watch_starts.get(key)
+    now = time.monotonic()
+    if start is None:
+        _watch_starts[key] = now
+        return "watch_started", duration
+    elapsed = now - start
+    if elapsed < duration:
+        return "watch_wait", int(duration - elapsed) + 1
+    _watch_starts.pop(key, None)
+    return await _grant_generic(bot, task, user_id, rank, "task_watch")
+
+
+async def credit_pending_completion(bot: Bot, comp_id: int) -> tuple[str, int, int]:
+    """Владелец подтверждает pending-пруф: начисляет руду+опыт.
+    Возвращает (code, user_id, reward)."""
+    comp = await get_completion_by_id(comp_id)
+    if not comp or comp.get("status") != "pending":
+        return "not_found", 0, 0
+    task = await get_task(comp["task_id"])
+    if not task:
+        return "not_found", comp["user_id"], 0
+    rank = calculate_rank(await get_xp(comp["user_id"]))
+    reward = int(round(task.get("reward", 0) * rank_reward_multiplier(rank)))
+    await set_completion_status(comp_id, "credited")
+    await add_mana(comp["user_id"], reward, "task_proof", ref_id=str(task["id"]))
+    from utils import XP_PER_TASK
+    await add_xp(comp["user_id"], XP_PER_TASK)
+    try:
+        from .ranks import sync_rank
+        await sync_rank(bot, comp["user_id"])
+    except Exception:
+        pass
+    return "credited", comp["user_id"], reward
+
+
+async def reject_pending_completion(comp_id: int) -> tuple[str, int]:
+    comp = await get_completion_by_id(comp_id)
+    if not comp or comp.get("status") != "pending":
+        return "not_found", 0
+    await set_completion_status(comp_id, "rejected")
+    return "rejected", comp["user_id"]
 
 
 async def check_milestones(bot: Bot, user_id: int) -> None:

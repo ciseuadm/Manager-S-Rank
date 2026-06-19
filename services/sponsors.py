@@ -21,9 +21,15 @@ from loguru import logger
 
 from database import (
     create_ad_request, get_ad_request, set_ad_request_status, create_task,
-    end_task_sponsorship,
+    end_task_sponsorship, mark_ad_request_paid,
 )
 from utils import get_config
+
+
+def ad_price_stars(target_subs: int) -> int:
+    """Цена self-serve заявки в Stars: max(min, подписчики × цена_за_подписчика)."""
+    cfg = get_config()
+    return max(cfg.ad_min_stars, int(target_subs) * cfg.ad_price_per_sub_stars)
 
 
 def _parse_dt(value: Optional[str]) -> Optional[datetime]:
@@ -69,12 +75,24 @@ def completion_guaranteed(comp: dict, now: Optional[datetime] = None) -> bool:
 async def submit_ad_request(
     *, advertiser_id: int, advertiser_name: str, channel_url: str,
     channel_username: str, description: str, target_subs: int, sponsor_type: str,
+    status: str = "pending",
 ) -> int:
     return await create_ad_request(
         advertiser_id=advertiser_id, advertiser_name=advertiser_name,
         channel_url=channel_url, channel_username=channel_username,
         description=description, target_subs=target_subs, sponsor_type=sponsor_type,
+        status=status,
     )
+
+
+async def confirm_ad_payment(req_id: int, stars: int, charge_id: str) -> Optional[dict]:
+    """Оплата Stars получена → заявка в очередь модерации. Возвращает заявку."""
+    req = await get_ad_request(req_id)
+    if not req or req.get("status") != "awaiting_payment":
+        return None
+    await mark_ad_request_paid(req_id, stars, charge_id)
+    logger.info(f"[SPONSOR] req={req_id} paid {stars}⭐ → moderation queue")
+    return await get_ad_request(req_id)
 
 
 async def approve_ad_request(
@@ -166,18 +184,34 @@ async def reject_ad_request(bot: Bot, req_id: int, note: str = "") -> tuple[bool
         return False, "Заявка не найдена."
     if req["status"] != "pending":
         return False, f"Заявка уже обработана ({req['status']})."
+
+    # Авто-возврат Stars из эскроу, если заявка была оплачена self-serve.
+    refunded = 0
+    if req.get("paid") and req.get("charge_id"):
+        try:
+            await bot.refund_star_payment(
+                user_id=req["advertiser_id"],
+                telegram_payment_charge_id=req["charge_id"],
+            )
+            refunded = req.get("stars_paid", 0) or 0
+        except Exception as e:
+            logger.warning(f"[SPONSOR] refund failed req={req_id}: {e}")
+            return False, f"Не удалось вернуть Stars: {e}. Заявка НЕ отклонена."
+
     await set_ad_request_status(req_id, "rejected", note=note)
     try:
         await bot.send_message(
             req["advertiser_id"],
             "❌ <b>Заявка на рекламу отклонена.</b>\n"
             + (f"Причина: {note}\n" if note else "")
+            + (f"↩️ Возвращено <b>{refunded}⭐</b>.\n" if refunded else "")
             + "Вы можете подать новую заявку: /advertise",
             parse_mode="HTML",
         )
     except Exception:
         pass
-    return True, "Заявка отклонена."
+    msg = "Заявка отклонена." + (f" Возвращено {refunded}⭐." if refunded else "")
+    return True, msg
 
 
 async def end_sponsorship(task_id: int) -> None:

@@ -23,17 +23,19 @@ from database import (
     list_tasks, set_task_active, create_task,
     task_completions_count, list_payout_requests,
     get_payout_request, set_payout_status, get_user_achievements,
-    get_xp,
+    get_xp, list_pending_completions, get_completion_by_id, get_task,
 )
 from services import (
-    daily_tasks_view, check_and_credit_subscription, request_payout,
+    daily_tasks_view, check_and_credit_subscription, check_and_credit_task,
+    watch_claim, credit_pending_completion, reject_pending_completion,
+    request_payout,
     refund_payout, mana_to_usd_cents, mana_to_rub, balance_of,
     user_streak, streak_multiplier, find_unsubscribed_channels, resubscribe_keyboard,
 )
 from services.gifts import get_catalog, send_telegram_gift, offer_from_product
 from utils.redeem_ui import redeem_intro, redeem_keyboard
 from utils import (
-    is_owner, get_config, format_mana, mention_html_raw, ce,
+    is_owner, get_config, format_mana, mention_html_raw, ce, escape_html,
     get_rank_label, perks_lines, has_privileges,
     rank_perks, calculate_rank,
 )
@@ -55,18 +57,41 @@ def _tasks_nav(b: InlineKeyboardBuilder) -> InlineKeyboardBuilder:
     return b
 
 
+_TYPE_ICON = {
+    "channel_sub": "📣", "chat_join": "👥", "watch": "▶️",
+    "quiz": "❓", "bot_start": "🤖", "react": "👍", "boost": "🚀", "external": "🌐",
+}
+
+
 def _tasks_keyboard(tasks: list[dict]) -> InlineKeyboardBuilder:
     b = InlineKeyboardBuilder()
     for t in tasks:
+        icon = _TYPE_ICON.get(t.get("type"), "📌")
+        mode = t.get("verify_mode") or "membership"
         url = t.get("url") or (
             f"https://t.me/{t['channel_username']}" if t.get("channel_username") else None
         )
+        title = (t.get("title") or "Задание")[:32]
         if url:
-            b.row(InlineKeyboardButton(text=f"➡️ {(t['title'] or 'Канал')[:32]}", url=url))
-        b.row(InlineKeyboardButton(
-            text=f"🔍 Проверить и забрать +{t['reward']} руды",
-            callback_data=f"task:check:{t['id']}",
-        ))
+            b.row(InlineKeyboardButton(text=f"{icon} {title}", url=url))
+        reward = t["reward"]
+        if mode == "membership":
+            b.row(InlineKeyboardButton(
+                text=f"🔍 Проверить и забрать +{reward} руды",
+                callback_data=f"task:check:{t['id']}"))
+        elif mode == "timer":
+            secs = t.get("duration_sec", 30) or 30
+            b.row(InlineKeyboardButton(
+                text=f"✅ Я посмотрел ({secs}с) → +{reward}",
+                callback_data=f"task:watch:{t['id']}"))
+        elif mode == "quiz":
+            b.row(InlineKeyboardButton(
+                text=f"✍️ Ответить → +{reward} руды",
+                callback_data=f"task:quizinfo:{t['id']}"))
+        else:  # proof
+            b.row(InlineKeyboardButton(
+                text=f"📤 Отправить пруф → +{reward} руды",
+                callback_data=f"task:proofinfo:{t['id']}"))
     return _tasks_nav(b)
 
 
@@ -180,7 +205,7 @@ async def cb_task_done(call: CallbackQuery) -> None:
 @router.callback_query(F.data.startswith("task:check:"))
 async def cb_task_check(call: CallbackQuery, bot: Bot) -> None:
     task_id = int(call.data.split(":")[2])
-    code, reward = await check_and_credit_subscription(bot, call.from_user.id, task_id)
+    code, reward = await check_and_credit_task(bot, call.from_user.id, task_id)
 
     if code == "credited":
         await call.answer(f"✅ +{reward} руды зачислено!", show_alert=True)
@@ -230,6 +255,125 @@ async def cb_task_check(call: CallbackQuery, bot: Bot) -> None:
     if code == "credited":
         text, kb = await _render_tasks(call.from_user.id)
         await edit_screen(call.message, text, reply_markup=kb.as_markup())
+
+
+# ── Задание-просмотр (timer) ─────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("task:watch:"))
+async def cb_task_watch(call: CallbackQuery, bot: Bot) -> None:
+    task_id = int(call.data.split(":")[2])
+    code, val = await watch_claim(bot, call.from_user.id, task_id)
+    if code == "watch_started":
+        await call.answer(
+            f"⏳ Таймер пошёл! Посмотри материал {val} сек и нажми кнопку снова.",
+            show_alert=True)
+    elif code == "watch_wait":
+        await call.answer(f"⏳ Ещё рано. Подожди ~{val} сек и нажми снова.", show_alert=True)
+    elif code == "credited":
+        await call.answer(f"✅ +{val} руды зачислено!", show_alert=True)
+        text, kb = await _render_tasks(call.from_user.id)
+        await edit_screen(call.message, text, reply_markup=kb.as_markup())
+    elif code == "already":
+        await call.answer("Награда за это задание уже получена.", show_alert=True)
+    elif code == "daily_limit":
+        await call.answer("📅 На сегодня лимит заданий исчерпан. Новые откроются завтра.", show_alert=True)
+    elif code == "locked":
+        await call.answer("⏳ Сначала вернись на каналы прошлых заданий.", show_alert=True)
+    else:
+        await call.answer("Задание недоступно.", show_alert=True)
+
+
+# ── Задание-квиз ──────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("task:quizinfo:"))
+async def cb_task_quizinfo(call: CallbackQuery) -> None:
+    task_id = int(call.data.split(":")[2])
+    await call.answer(
+        f"✍️ Чтобы ответить, отправь команду:\n/ans {task_id} твой_ответ",
+        show_alert=True)
+
+
+@router.message(Command("ans", "answer"), F.chat.type == "private")
+async def cmd_answer(message: Message, bot: Bot) -> None:
+    args = (message.text or "").split(maxsplit=2)
+    if len(args) < 3 or not args[1].isdigit():
+        await message.answer("✏️ Использование: <code>/ans &lt;id задания&gt; ответ</code>", parse_mode="HTML")
+        return
+    task_id, answer = int(args[1]), args[2]
+    code, reward = await check_and_credit_task(bot, message.from_user.id, task_id, payload=answer)
+    if code == "credited":
+        await message.answer(f"✅ Верно! +{reward} руды зачислено.")
+    elif code == "wrong_answer":
+        await message.answer("❌ Неверный ответ. Попробуй ещё раз.")
+    elif code == "already":
+        await message.answer("Это задание уже выполнено.")
+    elif code == "daily_limit":
+        await message.answer("📅 На сегодня лимит заданий исчерпан.")
+    elif code == "locked":
+        await message.answer("⏳ Сначала вернись на каналы прошлых заданий: /tasks")
+    else:
+        await message.answer("⚠️ Задание недоступно или это не квиз.")
+
+
+# ── Задание-пруф (ручная модерация) ───────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("task:proofinfo:"))
+async def cb_task_proofinfo(call: CallbackQuery) -> None:
+    task_id = int(call.data.split(":")[2])
+    await call.answer(
+        f"📤 Выполни задание и пришли подтверждение:\n"
+        f"/proof {task_id} что сделал (можно ответом на скриншот)",
+        show_alert=True)
+
+
+@router.message(Command("proof"), F.chat.type == "private")
+async def cmd_proof(message: Message, bot: Bot) -> None:
+    args = (message.text or "").split(maxsplit=2)
+    if len(args) < 2 or not args[1].isdigit():
+        await message.answer(
+            "✏️ Использование: <code>/proof &lt;id задания&gt; описание</code>\n"
+            "Можно ответить этой командой на свой скриншот.",
+            parse_mode="HTML")
+        return
+    task_id = int(args[1])
+    proof_text = args[2] if len(args) >= 3 else ""
+    # Скриншот: если команда отправлена ответом на фото — сохраняем file_id.
+    if message.reply_to_message and message.reply_to_message.photo:
+        proof_text = (proof_text + " [photo:" +
+                      message.reply_to_message.photo[-1].file_id + "]").strip()
+    elif message.photo:
+        proof_text = (proof_text + " [photo:" + message.photo[-1].file_id + "]").strip()
+    if not proof_text:
+        await message.answer("⚠️ Добавь описание или приложи скриншот.")
+        return
+
+    code, _ = await check_and_credit_task(bot, message.from_user.id, task_id, payload=proof_text)
+    if code == "proof_submitted":
+        await message.answer(
+            "📨 Пруф отправлен на проверку. Как только Монарх подтвердит — руда придёт на баланс.")
+        cfg = get_config()
+        if cfg.owner_id:
+            try:
+                task = await get_task(task_id)
+                await bot.send_message(
+                    cfg.owner_id,
+                    "📥 <b>НОВЫЙ ПРУФ ПО ЗАДАНИЮ</b>\n\n"
+                    f"Задание #{task_id}: «{(task or {}).get('title', '—')}»\n"
+                    f"Охотник: {mention_html_raw(message.from_user.id, message.from_user.full_name)} "
+                    f"(<code>{message.from_user.id}</code>)\n"
+                    f"Пруф: {proof_text[:300]}\n\n"
+                    "Очередь: /taskproofs",
+                    parse_mode="HTML")
+            except Exception:
+                pass
+    elif code == "proof_pending":
+        await message.answer("⏳ Твой пруф по этому заданию уже на проверке.")
+    elif code == "already":
+        await message.answer("Это задание уже выполнено.")
+    elif code == "locked":
+        await message.answer("⏳ Сначала вернись на каналы прошлых заданий: /tasks")
+    else:
+        await message.answer("⚠️ Задание недоступно или не требует пруфа.")
 
 
 # ── /redeem ──────────────────────────────────────────────────────────────────
@@ -491,6 +635,7 @@ async def newtask_channel(message: Message, state: FSMContext, bot: Bot) -> None
         channel_id=chat.id,
         channel_username=chat.username or "",
         title=chat.title or (f"@{chat.username}" if chat.username else "Канал"),
+        chat_type=getattr(chat.type, "value", chat.type),
     )
     await state.set_state(NewTask.reward)
     cfg = get_config()
@@ -597,8 +742,13 @@ async def _finish_task(message: Message, state: FSMContext, url: str) -> None:
     revenue_rub = int(data.get("revenue_rub", get_config().task_revenue_rub_default))
     revenue_kopecks = revenue_rub * 100
 
+    # Группа/супергруппа → задание-вступление (chat_join), канал → подписка.
+    is_group = data.get("chat_type") in ("group", "supergroup")
+    task_type = "chat_join" if is_group else "channel_sub"
+
     task_id = await create_task(
-        type="channel_sub",
+        type=task_type,
+        verify_mode="membership",
         title=data.get("title", "Канал"),
         channel_id=data["channel_id"],
         channel_username=data.get("channel_username", ""),
@@ -651,6 +801,136 @@ async def cmd_deltask(message: Message) -> None:
         return
     await set_task_active(int(args[1]), 0)
     await message.answer(f"⚪️ Задание #{args[1]} выключено.")
+
+
+# ── Owner: быстрые создатели заданий новых типов ─────────────────────────────
+# Все задания создаёт только владелец — фрод-задания исключены на входе.
+
+@router.message(Command("addwatch"), F.chat.type == "private")
+async def cmd_addwatch(message: Message) -> None:
+    if not is_owner(message.from_user.id):
+        return
+    body = (message.text or "").split(maxsplit=1)
+    parts = [p.strip() for p in (body[1] if len(body) > 1 else "").split("|")]
+    if len(parts) < 4 or not parts[0].startswith("http") or not parts[1].isdigit() or not parts[2].isdigit():
+        await message.answer(
+            "✏️ Формат: <code>/addwatch ссылка | награда | секунды | заголовок</code>\n"
+            "Пример: <code>/addwatch https://youtu.be/x | 30 | 20 | Видео спонсора</code>",
+            parse_mode="HTML")
+        return
+    url, reward, secs, title = parts[0], int(parts[1]), int(parts[2]), parts[3]
+    task_id = await create_task(
+        type="watch", verify_mode="timer", title=title, channel_id=0,
+        channel_username="", url=url, reward=reward, revenue_cents=0, daily=0,
+        created_by=message.from_user.id, duration_sec=secs)
+    await message.answer(
+        f"✅ <b>Задание-просмотр #{task_id}</b>\nНаграда: {reward} руды · смотреть {secs}с\n"
+        f"Появилось в /tasks.", parse_mode="HTML")
+
+
+@router.message(Command("addquiz"), F.chat.type == "private")
+async def cmd_addquiz(message: Message) -> None:
+    if not is_owner(message.from_user.id):
+        return
+    body = (message.text or "").split(maxsplit=1)
+    parts = [p.strip() for p in (body[1] if len(body) > 1 else "").split("|")]
+    if len(parts) < 3 or not parts[0].isdigit():
+        await message.answer(
+            "✏️ Формат: <code>/addquiz награда | ответ | вопрос</code>\n"
+            "Пример: <code>/addquiz 20 | 1998 | В каком году вышло аниме?</code>",
+            parse_mode="HTML")
+        return
+    reward, answer, question = int(parts[0]), parts[1], parts[2]
+    task_id = await create_task(
+        type="quiz", verify_mode="quiz", title=question, channel_id=0,
+        channel_username="", url="", reward=reward, revenue_cents=0, daily=0,
+        created_by=message.from_user.id, answer=answer)
+    await message.answer(
+        f"✅ <b>Квиз #{task_id}</b>\nНаграда: {reward} руды · ответ: <code>{escape_html(answer)}</code>\n"
+        f"Игроки отвечают через /ans.", parse_mode="HTML")
+
+
+@router.message(Command("addproof"), F.chat.type == "private")
+async def cmd_addproof(message: Message) -> None:
+    if not is_owner(message.from_user.id):
+        return
+    body = (message.text or "").split(maxsplit=1)
+    parts = [p.strip() for p in (body[1] if len(body) > 1 else "").split("|")]
+    if len(parts) < 2 or not parts[0].isdigit():
+        await message.answer(
+            "✏️ Формат: <code>/addproof награда | инструкция | [ссылка] | [тип]</code>\n"
+            "Тип: bot_start | react | boost | external (по умолчанию external).\n"
+            "Пример: <code>/addproof 25 | Запусти бота и пришли скрин | https://t.me/x?start=1 | bot_start</code>",
+            parse_mode="HTML")
+        return
+    reward = int(parts[0])
+    title = parts[1]
+    url = parts[2] if len(parts) >= 3 and parts[2].startswith("http") else ""
+    ttype = parts[3] if len(parts) >= 4 and parts[3] in ("bot_start", "react", "boost", "external") else "external"
+    task_id = await create_task(
+        type=ttype, verify_mode="proof", title=title, channel_id=0,
+        channel_username="", url=url, reward=reward, revenue_cents=0, daily=0,
+        created_by=message.from_user.id)
+    await message.answer(
+        f"✅ <b>Задание-пруф #{task_id}</b> ({ttype})\nНаграда: {reward} руды\n"
+        f"Пруфы прилетят в /taskproofs на ручное подтверждение.", parse_mode="HTML")
+
+
+# ── Owner: очередь пруфов (ручное подтверждение) ─────────────────────────────
+
+@router.message(Command("taskproofs", "proofs"), F.chat.type == "private")
+async def cmd_taskproofs(message: Message) -> None:
+    if not is_owner(message.from_user.id):
+        return
+    rows = await list_pending_completions(limit=30)
+    if not rows:
+        await message.answer("📭 Очередь пруфов пуста. ✅")
+        return
+    lines = ["📥 <b>ПРУФЫ НА ПРОВЕРКЕ</b>\n"]
+    for r in rows:
+        lines.append(
+            f"<code>#{r['comp_id']}</code> · задание «{(r['title'] or '—')[:20]}» · "
+            f"user <code>{r['user_id']}</code>\n   пруф: {escape_html((r['proof'] or '—')[:120])}")
+    lines.append("\n✅ /creditproof &lt;id&gt;   ❌ /rejectproof &lt;id&gt;")
+    await message.answer("\n".join(lines), parse_mode="HTML")
+
+
+@router.message(Command("creditproof"), F.chat.type == "private")
+async def cmd_creditproof(message: Message, bot: Bot) -> None:
+    if not is_owner(message.from_user.id):
+        return
+    args = (message.text or "").split()
+    if len(args) < 2 or not args[1].isdigit():
+        await message.answer("Использование: <code>/creditproof 5</code>", parse_mode="HTML")
+        return
+    code, uid, reward = await credit_pending_completion(bot, int(args[1]))
+    if code != "credited":
+        await message.answer("Пруф не найден или уже обработан.")
+        return
+    await message.answer(f"✅ Пруф #{args[1]} подтверждён. Начислено {reward} руды пользователю {uid}.")
+    try:
+        await bot.send_message(uid, f"✅ Твой пруф подтверждён! +{reward} руды на баланс. Так держать, охотник!")
+    except Exception:
+        pass
+
+
+@router.message(Command("rejectproof"), F.chat.type == "private")
+async def cmd_rejectproof(message: Message, bot: Bot) -> None:
+    if not is_owner(message.from_user.id):
+        return
+    args = (message.text or "").split()
+    if len(args) < 2 or not args[1].isdigit():
+        await message.answer("Использование: <code>/rejectproof 5</code>", parse_mode="HTML")
+        return
+    code, uid = await reject_pending_completion(int(args[1]))
+    if code != "rejected":
+        await message.answer("Пруф не найден или уже обработан.")
+        return
+    await message.answer(f"❌ Пруф #{args[1]} отклонён.")
+    try:
+        await bot.send_message(uid, "ℹ️ Твой пруф по заданию отклонён. Перепроверь условия и попробуй снова.")
+    except Exception:
+        pass
 
 
 # ── Owner: заявки на вывод ───────────────────────────────────────────────────

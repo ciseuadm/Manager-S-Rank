@@ -338,6 +338,27 @@ _NEW_COLUMNS = {
         "target_subs": "INTEGER DEFAULT 0",     # авто-завершение при достижении (temporary)
         "guarantee_days": "INTEGER DEFAULT 0",  # окно неотписки для temporary (0=бессрочно для house/permanent)
         "ended_at": "TEXT",                     # когда спонсорство отменено (NULL=активно)
+        # Тип заданий и режим проверки выполнения:
+        #  verify_mode: 'membership' (подписка/вступление — get_chat_member) |
+        #    'timer' (просмотр N секунд) | 'quiz' (правильный ответ) |
+        #    'proof' (ручной пруф — владелец подтверждает в очереди).
+        # type расширен: channel_sub | chat_join | watch | quiz | bot_start |
+        #    react | boost | external(CPA).
+        "verify_mode": "TEXT DEFAULT 'membership'",
+        "duration_sec": "INTEGER DEFAULT 0",    # для 'watch' (сколько секунд смотреть)
+        "answer": "TEXT DEFAULT ''",            # для 'quiz' (правильный ответ, lower)
+    },
+    "task_completions": {
+        # Пруф для 'proof'-заданий (текст/описание/file_id фото). Выполнение
+        # создаётся в статусе 'pending' и ждёт ручного подтверждения владельцем.
+        "proof": "TEXT DEFAULT ''",
+    },
+    "ad_requests": {
+        # Self-serve оплата Stars в эскроу: сколько ⭐ оплачено и charge_id для
+        # возврата при отклонении. paid=1 — оплачено и стоит в очереди модерации.
+        "stars_paid": "INTEGER DEFAULT 0",
+        "charge_id": "TEXT DEFAULT ''",
+        "paid": "INTEGER DEFAULT 0",
     },
 }
 
