@@ -253,12 +253,20 @@ async def check_milestones(bot: Bot, user_id: int) -> None:
 
 async def recheck_subscriptions(bot: Bot) -> dict:
     """
-    Проверяет, остались ли пользователи подписанными. При отписке снимает
-    начисленную руду (clawback) и помечает выполнение reverted.
+    Проверяет, остались ли пользователи подписанными.
+
+    При отписке смотрим, действует ли ещё гарантия неотписки для этого канала:
+      • гарантия активна → clawback (снимаем руду+опыт, помечаем reverted,
+        уведомляем с кнопками вернуться);
+      • гарантия истекла (временный спонсор после окна / постоянный после
+        отмены + 7 дней) → released: награду и опыт НЕ трогаем, пользователь
+        свободен и не блокируется в новых заданиях.
     """
+    from .sponsors import completion_guaranteed
+    from utils import XP_PER_TASK
+
     comps = await get_credited_channel_completions()
-    checked = 0
-    reverted = 0
+    checked = reverted = released = 0
     for c in comps:
         checked += 1
         try:
@@ -268,10 +276,16 @@ async def recheck_subscriptions(bot: Bot) -> dict:
             continue
         if _is_subscribed(member):
             continue
+
+        if not completion_guaranteed(c):
+            # Гарантия истекла — отпускаем без штрафа.
+            await mark_completion_released(c["comp_id"])
+            released += 1
+            continue
+
         await revert_mana(
             c["user_id"], c["reward"], "task_clawback", ref_id=str(c["task_id"])
         )
-        from utils import XP_PER_TASK
         await sub_xp(c["user_id"], XP_PER_TASK)
         await mark_completion_reverted(c["comp_id"])
         reverted += 1
@@ -286,8 +300,8 @@ async def recheck_subscriptions(bot: Bot) -> dict:
             clawback_title=c.get("title") or "",
             clawback_reward=c["reward"],
         )
-    logger.info(f"[TASKS] recheck done: checked={checked} reverted={reverted}")
-    return {"checked": checked, "reverted": reverted}
+    logger.info(f"[TASKS] recheck done: checked={checked} reverted={reverted} released={released}")
+    return {"checked": checked, "reverted": reverted, "released": released}
 
 
 # ── Обмен руды на подарок ────────────────────────────────────────────────────

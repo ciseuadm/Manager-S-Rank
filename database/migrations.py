@@ -68,6 +68,27 @@ CREATE TABLE IF NOT EXISTS guilds (
     created_at      TEXT DEFAULT (datetime('now'))
 );
 
+-- ── Заявки рекламодателей (анонимные для пользователей) ─────────────────────
+-- Рекламодатель подаёт заявку: канал, краткое описание, желаемое число
+-- подписчиков, тип (временный/постоянный). Владелец одобряет/отклоняет; при
+-- одобрении создаётся задание (tasks) со спонсорскими метаданными.
+CREATE TABLE IF NOT EXISTS ad_requests (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    advertiser_id    INTEGER,                       -- кто подал (для связи/учёта, скрыт от юзеров)
+    advertiser_name  TEXT DEFAULT '',
+    channel_url      TEXT,
+    channel_username TEXT DEFAULT '',
+    description      TEXT DEFAULT '',               -- 2 слова о канале
+    target_subs      INTEGER DEFAULT 0,             -- сколько подписчиков хочет привести
+    sponsor_type     TEXT DEFAULT 'temporary',      -- 'temporary' | 'permanent'
+    status           TEXT DEFAULT 'pending',        -- 'pending' | 'approved' | 'rejected'
+    note             TEXT DEFAULT '',
+    task_id          INTEGER DEFAULT 0,             -- созданное задание после одобрения
+    created_at       TEXT DEFAULT (datetime('now')),
+    decided_at       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_adreq_status ON ad_requests(status);
+
 CREATE TABLE IF NOT EXISTS chat_roles (
     user_id    INTEGER,
     chat_id    INTEGER,
@@ -205,6 +226,19 @@ _NEW_COLUMNS = {
         # Наивысший ранг рекрута, за который агенту уже выплачена награда
         # ('' = ещё ничего). Позволяет платить агенту за каждую новую веху.
         "paid_rank": "TEXT DEFAULT ''",
+    },
+    "tasks": {
+        # Спонсорство и гарантии неотписки:
+        #  sponsor_type: 'house' (наш внутренний, бессрочно) | 'permanent'
+        #    (постоянный спонсор, гарантия неотписки пока активен + 7 дней после
+        #    отмены) | 'temporary' (временный, гарантия guarantee_days от подписки).
+        "sponsor_type": "TEXT DEFAULT 'house'",
+        "advertiser_id": "INTEGER DEFAULT 0",
+        "anonymous": "INTEGER DEFAULT 1",
+        "description": "TEXT DEFAULT ''",
+        "target_subs": "INTEGER DEFAULT 0",     # авто-завершение при достижении (temporary)
+        "guarantee_days": "INTEGER DEFAULT 0",  # окно неотписки для temporary (0=бессрочно для house/permanent)
+        "ended_at": "TEXT",                     # когда спонсорство отменено (NULL=активно)
     },
 }
 

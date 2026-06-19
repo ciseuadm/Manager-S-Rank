@@ -26,6 +26,9 @@ from .guilds import (
     get_guild, get_or_create_guild, set_guild_name, set_guild_blocks,
     guild_member_count, guild_rank_counts, top_guilds,
 )
+from .ad_requests import (
+    create_ad_request, get_ad_request, list_ad_requests, set_ad_request_status,
+)
 from .ads import (
     create_campaign, get_active_campaigns, get_all_campaigns, get_campaign,
     set_campaign_status, delete_campaign, mark_campaign_sent, log_impression,
@@ -37,6 +40,7 @@ from .tasks import (
     task_completions_count, get_completion, get_completed_task_ids,
     count_user_credited_subs,
     record_completion, get_credited_channel_completions, mark_completion_reverted,
+    mark_completion_released, end_task_sponsorship,
     get_user_channel_task_completions,
     create_payout_request, get_payout_request, list_payout_requests, set_payout_status,
     has_achievement, count_achievement, award_achievement,
@@ -67,6 +71,8 @@ __all__ = [
     # guilds
     "get_guild", "get_or_create_guild", "set_guild_name", "set_guild_blocks",
     "guild_member_count", "guild_rank_counts", "top_guilds",
+    # ad requests
+    "create_ad_request", "get_ad_request", "list_ad_requests", "set_ad_request_status",
     # ads
     "create_campaign", "get_active_campaigns", "get_all_campaigns", "get_campaign",
     "set_campaign_status", "delete_campaign", "mark_campaign_sent", "log_impression",
@@ -78,6 +84,7 @@ __all__ = [
     "task_completions_count", "get_completion", "get_completed_task_ids",
     "count_user_credited_subs",
     "record_completion", "get_credited_channel_completions", "mark_completion_reverted",
+    "mark_completion_released", "end_task_sponsorship",
     "get_user_channel_task_completions",
     "create_payout_request", "get_payout_request", "list_payout_requests", "set_payout_status",
     "has_achievement", "count_achievement", "award_achievement",

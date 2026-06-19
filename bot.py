@@ -23,7 +23,7 @@ from database import init_db, close_db
 from handlers import (
     moderation_router, admin_router, user_router, settings_router,
     owner_router, economy_router, referral_router, payments_router,
-    ads_router, tasks_router, cursor_router, fun_router, set_bot_id,
+    ads_router, sponsors_router, tasks_router, cursor_router, fun_router, set_bot_id,
 )
 from services.cursor_bridge import bridge as cursor_bridge
 from middlewares import ThrottleMiddleware
@@ -104,6 +104,7 @@ PRIVATE_COMMANDS = [
     BotCommand(command="myref", description="🔗 Моя реф-ссылка"),
     BotCommand(command="vip", description="👑 VIP-зал"),
     BotCommand(command="donate", description="💛 Поддержать проект"),
+    BotCommand(command="advertise", description="📣 Реклама канала у нас"),
     BotCommand(command="help", description="📋 Список команд"),
     BotCommand(command="id", description="🆔 Узнать свой ID"),
 ]
@@ -145,6 +146,8 @@ OWNER_COMMANDS = PRIVATE_COMMANDS + [
     BotCommand(command="deletead", description="🗑 Удалить рекламную кампанию"),
     BotCommand(command="addtask", description="🆕 Новое задание-подписка"),
     BotCommand(command="tasklist", description="📋 Список заданий"),
+    BotCommand(command="adreqs", description="📥 Заявки рекламодателей"),
+    BotCommand(command="endsponsor", description="🛑 Остановить спонсорство"),
     BotCommand(command="payouts", description="🎁 Заявки на вывод"),
     BotCommand(command="backup", description="🗄 Бэкап БД сейчас"),
     BotCommand(command="dbcheck", description="🩺 Проверить целостность БД"),
@@ -256,6 +259,7 @@ async def main() -> None:
     # Routers — order matters: moderation last so admin commands take priority
     dp.include_router(owner_router)
     dp.include_router(tasks_router)
+    dp.include_router(sponsors_router)
     dp.include_router(ads_router)
     dp.include_router(admin_router)
     dp.include_router(user_router)

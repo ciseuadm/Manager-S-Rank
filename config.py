@@ -38,6 +38,12 @@ class Config:
     agent_sss_block_reward: int = 4000
     mana_transfer_fee_pct: int = 5       # комиссия казны при /transfer
 
+    # ── Спонсоры / реклама в заданиях ────────────────────────────────────────
+    # Временный спонсор: окно гарантии неотписки от подписки (дней).
+    sponsor_temp_guarantee_days: int = 7
+    # Постоянный спонсор после отмены: ещё столько дней держим гарантию.
+    sponsor_post_cancel_grace_days: int = 7
+
     # ── Ежедневное подземелье (бесплатный крючок) ────────────────────────────
     # /dungeon раз в день (ТОЛЬКО в чатах — бесплатная реклама): база + бонус
     # за рекламу бота в описании профиля. 25 + 25 = до 50 руды/день.
@@ -153,6 +159,8 @@ def load_config() -> Config:
         agent_ss_block_reward=_get_int("AGENT_SS_BLOCK_REWARD", 2000),
         agent_sss_block_reward=_get_int("AGENT_SSS_BLOCK_REWARD", 4000),
         mana_transfer_fee_pct=_get_int("MANA_TRANSFER_FEE_PCT", 5),
+        sponsor_temp_guarantee_days=_get_int("SPONSOR_TEMP_GUARANTEE_DAYS", 7),
+        sponsor_post_cancel_grace_days=_get_int("SPONSOR_POST_CANCEL_GRACE_DAYS", 7),
         daily_dungeon_base=_get_int("DAILY_DUNGEON_BASE", 25),
         daily_dungeon_ad_bonus=_get_int("DAILY_DUNGEON_AD_BONUS", 25),
         dungeon_streak_milestone=_get_int("DUNGEON_STREAK_MILESTONE", 30),

@@ -17,6 +17,10 @@ from .tasks import (
     user_streak, streak_multiplier, check_milestones,
     find_unsubscribed_channels, resubscribe_keyboard, notify_unsubscribe,
 )
+from .sponsors import (
+    submit_ad_request, approve_ad_request, reject_ad_request, end_sponsorship,
+    completion_guaranteed,
+)
 
 __all__ = [
     "broadcast",
@@ -32,4 +36,6 @@ __all__ = [
     "request_payout", "refund_payout",
     "user_streak", "streak_multiplier", "check_milestones",
     "find_unsubscribed_channels", "resubscribe_keyboard", "notify_unsubscribe",
+    "submit_ad_request", "approve_ad_request", "reject_ad_request", "end_sponsorship",
+    "completion_guaranteed",
 ]

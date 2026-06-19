@@ -16,15 +16,19 @@ from .db import get_db
 async def create_task(
     *, type: str, title: str, channel_id: int, channel_username: str,
     url: str, reward: int, revenue_cents: int, daily: int, created_by: int,
+    sponsor_type: str = "house", advertiser_id: int = 0, anonymous: int = 1,
+    description: str = "", target_subs: int = 0, guarantee_days: int = 0,
 ) -> int:
     db = await get_db()
     cur = await db.execute(
         """INSERT INTO tasks
            (type, title, channel_id, channel_username, url, reward,
-            revenue_cents, daily, created_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            revenue_cents, daily, created_by, sponsor_type, advertiser_id,
+            anonymous, description, target_subs, guarantee_days)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (type, title, channel_id, channel_username, url, reward,
-         revenue_cents, daily, created_by),
+         revenue_cents, daily, created_by, sponsor_type, advertiser_id,
+         anonymous, description, target_subs, guarantee_days),
     )
     await db.commit()
     return cur.lastrowid
@@ -129,11 +133,14 @@ async def count_user_credited_subs(user_id: int) -> int:
 
 
 async def get_credited_channel_completions() -> list[dict]:
-    """Все засчитанные подписки (для ежедневной ре-проверки/clawback)."""
+    """Все засчитанные подписки (для ежедневной ре-проверки/clawback).
+    Тащим и спонсорские поля задания — для расчёта окна гарантии неотписки."""
     db = await get_db()
     async with db.execute(
         """SELECT tc.id AS comp_id, tc.user_id, tc.reward, tc.status,
-                  t.id AS task_id, t.channel_id, t.title, t.url, t.channel_username
+                  tc.created_at AS comp_created_at,
+                  t.id AS task_id, t.channel_id, t.title, t.url, t.channel_username,
+                  t.sponsor_type, t.guarantee_days, t.ended_at
            FROM task_completions tc
            JOIN tasks t ON t.id = tc.task_id
            WHERE tc.status = 'credited' AND t.type = 'channel_sub'""",
@@ -163,6 +170,28 @@ async def mark_completion_reverted(comp_id: int) -> None:
     await db.execute(
         "UPDATE task_completions SET status = 'reverted', checked_at = datetime('now') WHERE id = ?",
         (comp_id,),
+    )
+    await db.commit()
+
+
+async def mark_completion_released(comp_id: int) -> None:
+    """Гарантия неотписки истекла: пользователь отписался, но штрафа нет —
+    помечаем выполнение released (награда и опыт сохраняются, из речека уходит)."""
+    db = await get_db()
+    await db.execute(
+        "UPDATE task_completions SET status = 'released', checked_at = datetime('now') WHERE id = ?",
+        (comp_id,),
+    )
+    await db.commit()
+
+
+async def end_task_sponsorship(task_id: int) -> None:
+    """Спонсор отменил оплату: снимаем задание из активных и фиксируем момент
+    окончания (от него отсчитываются 7 дней пост-гарантии неотписки)."""
+    db = await get_db()
+    await db.execute(
+        "UPDATE tasks SET active = 0, ended_at = datetime('now') WHERE id = ?",
+        (task_id,),
     )
     await db.commit()
 
