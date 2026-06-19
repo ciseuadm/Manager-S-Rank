@@ -314,6 +314,42 @@ async def cmd_kick(message: Message, bot: Bot) -> None:
     )
 
 
+# ── /setup — онбординг админа за 60 секунд ───────────────────────────────────
+
+@router.message(Command("setup", "quickstart", "start_setup"), F.chat.type.in_({"group", "supergroup"}))
+async def cmd_setup(message: Message, bot: Bot) -> None:
+    if not await _check_admin(message, bot):
+        return
+    settings = await get_chat_settings(message.chat.id)
+    pro = is_chat_pro(settings)
+    # Бот админ? — без прав модерация не работает.
+    try:
+        me = await bot.get_chat_member(message.chat.id, (await bot.me()).id)
+        is_admin = me.status in ("administrator", "creator")
+    except Exception:
+        is_admin = False
+
+    step1 = "✅" if is_admin else "❌"
+    badge = " ⭐<b>PRO</b>" if pro else ""
+    await message.answer(
+        f"🚀 <b>ЗАПУСК ЗА 60 СЕКУНД</b>{badge}\n\n"
+        f"{step1} <b>1. Права админа.</b> "
+        + ("Есть — модерация работает." if is_admin
+           else "Назначь меня админом (удалять/банить) — без этого защита выключена.") + "\n\n"
+        "⚙️ <b>2. Настрой чат:</b> <code>/settings</code> — фильтры, анти-флуд, "
+        "ночной режим, антирейд.\n\n"
+        "🎯 <b>3. Включи заработок:</b> участники зовут друзей и качают ранги — "
+        "<code>/setgoal</code> ставит цель приглашений (роль/руда за порог).\n\n"
+        "⚡ <b>4. Оживи чат:</b> <code>/addtrigger</code> (авто-ответы), "
+        "<code>/save</code> (заметки), <code>/raid</code> (ивент), "
+        "<code>/marry</code>, <code>/clan</code>.\n\n"
+        "📊 <b>5. Следи за ростом:</b> <code>/modstats</code> — аналитика чата. "
+        "⭐ <code>/pro</code> — премиум (90 дней аналитики, больше лимитов).\n\n"
+        "<i>Готово! Участники: /rank, /tasks, /dungeon — Система превратит чат в игру.</i>",
+        parse_mode="HTML",
+    )
+
+
 # ── /modstats — лог-аналитика модерации для админа ───────────────────────────
 
 @router.message(Command("modstats", "chatlog"), F.chat.type.in_({"group", "supergroup"}))

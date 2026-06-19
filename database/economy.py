@@ -252,6 +252,22 @@ async def get_top_mana(limit: int = 10) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+async def active_users(days: int = 1) -> int:
+    """Уникальные активные охотники за последние `days` суток.
+
+    Активность = любая запись в mana_tx (сообщение/задание/подземелье/трата).
+    days=1 → DAU (последние 24 ч), days=30 → MAU.
+    """
+    db = await get_db()
+    async with db.execute(
+        "SELECT COUNT(DISTINCT user_id) AS c FROM mana_tx "
+        "WHERE created_at >= datetime('now', ?)",
+        (f"-{days} days",),
+    ) as cur:
+        row = await cur.fetchone()
+    return row["c"] if row else 0
+
+
 async def get_mana_emission() -> dict:
     """Aggregate economy figures for the owner dashboard."""
     db = await get_db()

@@ -420,7 +420,7 @@ BOT_ADDED_WELCOME = (
     f"{ce('check')} никогда не трогаю админов.\n\n"
     f"{ce('fire')} <b>И превращаю чат в игру Solo Leveling:</b> ранги E→SSS, "
     f"Мана-руда за активность, задания, подземелья и топы.\n\n"
-    f"{ce('person')} Админ, открой настройки: <code>/settings</code>\n"
+    f"{ce('person')} Админ, запуск за 60 секунд: <code>/setup</code> (или <code>/settings</code>)\n"
     f"{ce('trophy')} Участники, проверьте ранг: <code>/rank</code> · подземелье: <code>/dungeon</code>"
 )
 

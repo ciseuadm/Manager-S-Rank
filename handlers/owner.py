@@ -13,6 +13,7 @@ from database import (
     get_all_chats, get_global_stats, get_mana_emission,
     payments_total, ads_global_stats,
     mana_emission_by_reason, payout_cost_summary, sponsor_revenue_cents,
+    active_users, global_referral_stats,
 )
 from keyboards import owner_keyboard
 from services import broadcast
@@ -48,6 +49,7 @@ PANEL_MSG = (
     "<b>Команды владельца:</b>\n"
     "/gstats — глобальная статистика (чаты, экономика, доход, реклама)\n"
     "/bank — 🏦 центральный банк: приход, долг рудой, эмиссия, профит\n"
+    "/metrics — 📈 дашборд роста: DAU/MAU, k-factor, ARPU\n"
     "/announce — 📣 опубликовать пост в канал бота\n"
     "/emojiid — 🧩 узнать ID премиум-эмодзи (для красивых постов)\n"
     "/chats — список всех чатов бота\n"
@@ -177,6 +179,56 @@ async def _bank_text() -> str:
     return "\n".join(lines)
 
 
+async def _metrics_text() -> str:
+    """Дашборд роста для владельца: DAU/MAU, k-factor (виральность), ARPU.
+
+    • DAU/MAU — уникальные активные охотники (любая активность в mana_tx).
+    • Stickiness = DAU/MAU (доля «возвращающихся»; 20%+ — здоровый продукт).
+    • k-factor ≈ среднее число приглашённых на охотника (>1 = вирусный рост).
+    • ARPU — реальный доход (Stars+спонсоры, ₽) на одного держателя кошелька.
+    """
+    cfg = get_config()
+    dau = await active_users(1)
+    wau = await active_users(7)
+    mau = await active_users(30)
+    eco = await get_mana_emission()
+    pay = await payments_total()
+    sponsor_cents = await sponsor_revenue_cents()
+    refs = await global_referral_stats(30)
+
+    holders = max(eco.get("holders", 0), 1)
+    stars_rub = star_rub(
+        pay.get("stars", 0),
+        usd_cents_per_1000=cfg.stars_usd_cents_per_1000, usd_rub=cfg.usd_rub_rate,
+    )
+    income_rub = stars_rub + sponsor_cents / 100
+    arpu = income_rub / holders
+    stickiness = (dau / mau * 100) if mau else 0
+    k_factor = refs["total"] / holders
+
+    return "\n".join([
+        "📈 <b>ДАШБОРД РОСТА</b>",
+        f"<i>Курс: {cfg.mana_per_rub} руды = 1 ₽</i>\n",
+        "👥 <b>АКТИВНОСТЬ</b>",
+        f"DAU (сутки): <b>{dau}</b>",
+        f"WAU (7 дней): <b>{wau}</b>",
+        f"MAU (30 дней): <b>{mau}</b>",
+        f"Stickiness (DAU/MAU): <b>{stickiness:.0f}%</b> "
+        f"<i>{'🟢 здорово' if stickiness >= 20 else '🟡 растим удержание'}</i>\n",
+        "🔁 <b>ВИРАЛЬНОСТЬ</b>",
+        f"Всего приглашений: <b>{refs['total']}</b> (за 30 дней: {refs['recent']})",
+        f"Активных вербовщиков: <b>{refs['inviters']}</b>",
+        f"k-factor (инвайтов/охотник): <b>{k_factor:.2f}</b> "
+        f"<i>{'🟢 вирусный рост' if k_factor >= 1 else '🟡 ниже 1.0'}</i>\n",
+        "💰 <b>МОНЕТИЗАЦИЯ</b>",
+        f"Доход всего: <b>~{income_rub:.0f} ₽</b> (Stars: {pay.get('stars', 0)}⭐)",
+        f"Держателей кошельков: <b>{holders}</b>",
+        f"ARPU: <b>~{arpu:.2f} ₽</b> на охотника\n",
+        "<i>Цель воронки: админ ставит бота → участники зарабатывают руду → "
+        "зовут рефералов → среди них появляются новые админы.</i>",
+    ])
+
+
 async def _chats_text() -> str:
     chats = await get_all_chats()
     if not chats:
@@ -211,6 +263,13 @@ async def cmd_gstats(message: Message) -> None:
 @router.message(Command("bank", "pl", "treasury"))
 async def cmd_bank(message: Message) -> None:
     await message.answer(await _bank_text(), parse_mode="HTML")
+
+
+# ── /metrics — дашборд роста (DAU/MAU, k-factor, ARPU) ───────────────────────
+
+@router.message(Command("metrics", "dashboard", "growth"))
+async def cmd_metrics(message: Message) -> None:
+    await message.answer(await _metrics_text(), parse_mode="HTML")
 
 
 # ── /emojiid — извлечь custom_emoji_id из присланных премиум-эмодзи ─────────────

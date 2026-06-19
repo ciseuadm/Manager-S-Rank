@@ -42,6 +42,24 @@ async def count_bot_referrals(inviter_id: int) -> int:
     return await count_referrals(inviter_id, 0)
 
 
+async def global_referral_stats(days: int = 30) -> dict:
+    """Глобальные реф-метрики для дашборда: всего приглашений, за период и
+    число активных вербовщиков. Основа для оценки k-factor (виральности)."""
+    db = await get_db()
+    async with db.execute("SELECT COUNT(*) AS c FROM referrals") as cur:
+        total = (await cur.fetchone())["c"]
+    async with db.execute(
+        "SELECT COUNT(*) AS c FROM referrals WHERE created_at >= datetime('now', ?)",
+        (f"-{days} days",),
+    ) as cur:
+        recent = (await cur.fetchone())["c"]
+    async with db.execute(
+        "SELECT COUNT(DISTINCT inviter_id) AS c FROM referrals"
+    ) as cur:
+        inviters = (await cur.fetchone())["c"]
+    return {"total": total, "recent": recent, "inviters": inviters}
+
+
 async def mark_referral_rewarded(invited_id: int, chat_id: int) -> None:
     db = await get_db()
     await db.execute(
