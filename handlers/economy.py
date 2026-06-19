@@ -152,7 +152,7 @@ async def cb_shop(call: CallbackQuery) -> None:
                 text="💳 Открыть бота и купить", url=f"https://t.me/{bot_uname}?start=buy"
             )]
         text = (
-            f"{ce('gem')} <b>ПОПОЛНЕНИЕ МАНА-РУДЫ</b>\n\n"
+            f"{ce('coin')} <b>ПОПОЛНЕНИЕ МАНА-РУДЫ</b>\n\n"
             f"Купи руду за Telegram Stars {ce('star')} — быстро и официально.\n"
             "Открой бота в личке и отправь команду <b>/buy</b> "
             "(или выбери пакет в разделе покупки).\n\n"

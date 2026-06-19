@@ -3,7 +3,7 @@ from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from services.gifts import get_catalog
-from utils import get_config, format_mana
+from utils import get_config, format_mana, ce
 from utils.economy_rates import tasks_to_gift
 
 
@@ -12,20 +12,20 @@ def redeem_intro(balance: int) -> str:
     catalog = get_catalog()
     cheapest = catalog[0] if catalog else None
     lines = [
-        "🎁 <b>ОБМЕН РУДЫ НА ПОДАРКИ TELEGRAM</b>\n",
-        f"🔹 Баланс: <b>{format_mana(balance)}</b>",
-        f"💱 Курс: <b>{cfg.mana_per_rub} руды = 1 ₽</b>",
-        f"📋 Задание-подписка: <b>+{cfg.task_reward_subscribe}</b> руды (~1 ₽ тебе)\n",
+        f"{ce('gift')} <b>ОБМЕН РУДЫ НА ПОДАРКИ TELEGRAM</b>\n",
+        f"{ce('coin')} Баланс: <b>{format_mana(balance)}</b>",
+        f"{ce('chart')} Курс: <b>{cfg.mana_per_rub} руды = 1 ₽</b>",
+        f"{ce('tasks')} Задание-подписка: <b>+{cfg.task_reward_subscribe}</b> руды (~1 ₽ тебе)\n",
     ]
     if cheapest:
         subs = tasks_to_gift(cheapest, cfg.task_reward_subscribe)
         lines.append(
-            f"🎯 Первый подарок ({cheapest.stars} ⭐): <b>{format_mana(cheapest.mana_price)}</b> "
-            f"(≈ {subs} подписок)\n"
+            f"{ce('target')} Первый подарок ({cheapest.stars} {ce('star')}): "
+            f"<b>{format_mana(cheapest.mana_price)}</b> (≈ {subs} подписок)\n"
         )
     lines.append(
-        "Выбери подарок ниже — Система отправит его в Telegram.\n"
-        "<i>⚠️ Не отписывайся от каналов заданий — иначе руда отзывается.</i>"
+        f"{ce('rocket')} Выбери подарок ниже — Система отправит его в Telegram.\n"
+        f"<i>{ce('warn')} Не отписывайся от каналов заданий — иначе руда отзывается.</i>"
     )
     return "\n".join(lines)
 

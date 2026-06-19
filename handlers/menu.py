@@ -26,7 +26,7 @@ router = Router()
 
 def _root_text(name: str) -> str:
     return (
-        f"{ce('sword')} <b>СИСТЕМА S-РАНГ — ГЛАВНОЕ МЕНЮ</b>\n\n"
+        f"{ce('spark')} <b>СИСТЕМА S-РАНГ — ГЛАВНОЕ МЕНЮ</b>\n\n"
         f"Приветствую, <b>{escape_html(name)}</b>. Управляй всем через кнопки — "
         "команды учить не нужно.\n\n"
         f"{ce('person')} Профиль и ранг охотника\n"
@@ -34,7 +34,7 @@ def _root_text(name: str) -> str:
         f"{ce('tasks')} Задания — основной заработок руды\n"
         f"{ce('gift')} Обмен руды на подарки Telegram\n"
         f"{ce('agent')} Доход с приглашённых друзей\n\n"
-        "<i>Выбери раздел ниже 👇</i>"
+        f"<i>{ce('rocket')} Выбери раздел ниже 👇</i>"
     )
 
 
@@ -82,21 +82,21 @@ async def cb_menu_profile(call: CallbackQuery) -> None:
     next_line = (
         f"\n{ce('target')} До следующего ранга: <b>{card['xp_to_next']}</b> опыта"
         if card["xp_to_next"] is not None
-        else f"\n{ce('crown')} <b>МАКСИМАЛЬНЫЙ РАНГ ДОСТИГНУТ!</b>"
+        else f"\n{ce('premium')} <b>МАКСИМАЛЬНЫЙ РАНГ ДОСТИГНУТ!</b>"
     )
     perks = perks_lines(card["rank"])
     perks_block = (
-        f"\n\n{ce('crown')} <b>Привилегии ранга:</b>\n" + "\n".join(f"• {p}" for p in perks)
+        f"\n\n{ce('premium')} <b>Привилегии ранга:</b>\n" + "\n".join(f"• {p}" for p in perks)
         if perks else ""
     )
     text = (
         f"{ce('person')} <b>КАРТОЧКА ОХОТНИКА</b>\n\n"
-        f"👤 {mention_html(call.from_user)}\n"
+        f"{ce('person')} {mention_html(call.from_user)}\n"
         f"{ce('trophy')} Ранг: <b>{card['label']}</b>\n"
-        f"🎖 Звание: <i>{card['title']}</i>\n"
-        f"{ce('star')} Опыт: <b>{card['xp']}</b>\n\n"
+        f"{ce('star')} Звание: <i>{card['title']}</i>\n"
+        f"{ce('chartup')} Опыт: <b>{card['xp']}</b>\n\n"
         f"{ce('chart')} Прогресс: {card['progress']}{next_line}{perks_block}\n\n"
-        f"<i>Опыт даётся за задания и подземелье.</i>"
+        f"<i>{ce('tasks')} Опыт даётся за задания и подземелье.</i>"
     )
     await edit_screen(call.message, text, reply_markup=menu_nav_keyboard())
     await call.answer()
@@ -109,11 +109,12 @@ async def cb_menu_wallet(call: CallbackQuery) -> None:
     w = await wallet_of(call.from_user.id)
     text = (
         f"{ce('wallet')} <b>ХРАНИЛИЩЕ МАНА-РУДЫ</b>\n\n"
-        f"👤 {mention_html(call.from_user)}\n"
-        f"{ce('gem')} Баланс: <b>{format_mana(w.get('mana', 0))}</b>\n"
-        f"⛏ Всего добыто: <b>{format_mana(w.get('total_earned', 0))}</b>\n"
-        f"🔥 Потрачено: <b>{format_mana(w.get('total_spent', 0))}</b>\n\n"
-        "<i>Больше всего руды дают задания. Трать в магазине или меняй на подарки.</i>"
+        f"{ce('person')} {mention_html(call.from_user)}\n"
+        f"{ce('coin')} Баланс: <b>{format_mana(w.get('mana', 0))}</b>\n"
+        f"{ce('chartup')} Всего добыто: <b>{format_mana(w.get('total_earned', 0))}</b>\n"
+        f"{ce('fire')} Потрачено: <b>{format_mana(w.get('total_spent', 0))}</b>\n\n"
+        f"<i>{ce('tasks')} Больше всего руды дают задания. "
+        f"{ce('gift')} Трать в магазине или меняй на подарки.</i>"
     )
     extra = [
         InlineKeyboardButton(text="📋 Задания", callback_data="menu:tasks"),
@@ -129,8 +130,8 @@ async def cb_menu_wallet(call: CallbackQuery) -> None:
 async def cb_menu_perks(call: CallbackQuery) -> None:
     cfg = get_config()
     lines = [
-        f"{ce('crown')} <b>ПРИВИЛЕГИИ ВЫСОКИХ РАНГОВ</b>\n",
-        "Достигай ранга S и выше — Система даёт бонусы:\n",
+        f"{ce('premium')} <b>ПРИВИЛЕГИИ ВЫСОКИХ РАНГОВ</b>\n",
+        f"{ce('info')} Достигай ранга S и выше — Система даёт бонусы:\n",
         f"{ce('trophy')} <b>S</b> — +10% к награде за задание, −2% комиссии перевода",
         f"{ce('trophy')} <b>SS</b> — +20% к награде, −3% комиссии",
         f"{ce('crown')} <b>SSS</b> — +35% к награде, −5% комиссии\n",
@@ -201,18 +202,18 @@ async def cb_menu_ref(call: CallbackQuery) -> None:
     d = AGENT_REWARDS.get("D", cfg.mana_referral_rankup)
     text = (
         f"{ce('agent')} <b>ТВОЙ ДОХОД С ДРУЗЕЙ</b>\n\n"
-        "Приглашай охотников по своей ссылке — Система закрепляет их за тобой "
+        f"{ce('link')} Приглашай охотников по своей ссылке — Система закрепляет их за тобой "
         "<b>навсегда</b> и платит рудой за <b>каждое</b> повышение их ранга:\n"
-        f"• D +{d} · C +100 · B +200 · A +400 · S +800 руды\n"
-        "Один охотник, раскачанный до S = <b>1550 руды</b>.\n\n"
+        f"{ce('check')} D +{d} · C +100 · B +200 · A +400 · S +800 руды\n"
+        f"{ce('coin')} Один охотник до S = <b>1550 руды</b>.\n\n"
         f"{ce('link')} Твоя ссылка:\n<code>{escape_html(link)}</code>\n\n"
         f"{ce('person')} Приглашено: <b>{count}</b>"
-        + (f" · до VIP осталось <b>{max(0, threshold - count)}</b>" if not is_vip else
-           f" · {ce('crown')} <b>VIP открыт</b>")
+        + (f" · {ce('target')} до VIP осталось <b>{max(0, threshold - count)}</b>" if not is_vip else
+           f" · {ce('premium')} <b>VIP открыт</b>")
     )
     share_text = (
-        "⚔️ Заходи в Систему S-Ранг — фарми Мана-руду, расти в рангах и меняй "
-        "руду на подарки Telegram!"
+        "⚡ Заходи в Систему S-Ранг — фарми Мана-руду, расти в рангах "
+        "и меняй руду на подарки Telegram!"
     )
     share_url = (
         f"https://t.me/share/url?url={quote(link, safe='')}"

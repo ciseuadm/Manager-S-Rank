@@ -33,7 +33,7 @@ from services import (
 from services.gifts import get_catalog, send_telegram_gift, offer_from_product
 from utils.redeem_ui import redeem_intro, redeem_keyboard
 from utils import (
-    is_owner, get_config, format_mana, mention_html_raw,
+    is_owner, get_config, format_mana, mention_html_raw, ce,
     get_rank_label, perks_lines, has_privileges,
     rank_perks, calculate_rank,
 )
@@ -80,9 +80,9 @@ async def _render_tasks(user_id: int) -> tuple[str, InlineKeyboardBuilder]:
     streak = await user_streak(user_id)
     mult = streak_multiplier(streak)
     mult_line = (
-        f"🔥 Стрик подписок: <b>{streak}</b> → множитель награды <b>×{mult:.1f}</b>\n"
+        f"{ce('fire')} Стрик подписок: <b>{streak}</b> → множитель награды <b>×{mult:.1f}</b>\n"
         if streak > 0 else
-        "🔥 Каждая сохранённая подписка повышает множитель будущих наград!\n"
+        f"{ce('fire')} Каждая сохранённая подписка повышает множитель будущих наград!\n"
     )
 
     # Привилегия ранга: надбавка к награде за задание (S/SS/SSS).
@@ -90,22 +90,22 @@ async def _render_tasks(user_id: int) -> tuple[str, InlineKeyboardBuilder]:
     perk_line = ""
     if has_privileges(rank) and perk["task_reward_pct"]:
         perk_line = (
-            f"👑 Привилегия {get_rank_label(rank)}: "
+            f"{ce('premium')} Привилегия {get_rank_label(rank)}: "
             f"<b>+{perk['task_reward_pct']}% к награде</b>\n"
         )
 
-    limit_line = f"📅 Заданий сегодня: <b>{done_today}/{limit}</b>\n"
+    limit_line = f"{ce('tasks')} Заданий сегодня: <b>{done_today}/{limit}</b>\n"
 
     # Лимит исчерпан — на сегодня всё.
     if remaining <= 0:
         text = (
-            "📋 <b>ЗАДАНИЯ ГИЛЬДИИ</b>\n\n"
-            f"✅ Дневной лимит выполнен: <b>{done_today}/{limit}</b> заданий.\n"
-            f"🔹 Твой баланс: <b>{format_mana(balance)}</b>\n"
+            f"{ce('tasks')} <b>ЗАДАНИЯ ГИЛЬДИИ</b>\n\n"
+            f"{ce('check')} Дневной лимит выполнен: <b>{done_today}/{limit}</b> заданий.\n"
+            f"{ce('coin')} Твой баланс: <b>{format_mana(balance)}</b>\n"
             f"{perk_line}"
-            "\n⏳ Новые задания откроются завтра. Подними ранг (S/SS/SSS) — "
+            f"\n{ce('alarm')} Новые задания откроются завтра. Подними ранг (S/SS/SSS) — "
             "и за каждое задание будешь получать больше руды: /privileges\n\n"
-            "Обменять руду на подарок: /redeem · Достижения: /achievements"
+            f"{ce('gift')} Обменять руду: /redeem  ·  {ce('trophy')} Достижения: /achievements"
         )
         b = InlineKeyboardBuilder()
         b.row(InlineKeyboardButton(text="🔄 Обновить", callback_data="task:list"))
@@ -114,11 +114,11 @@ async def _render_tasks(user_id: int) -> tuple[str, InlineKeyboardBuilder]:
     # Лимит ещё есть, но активных невыполненных заданий нет.
     if not tasks:
         text = (
-            "📋 <b>ЗАДАНИЯ ГИЛЬДИИ</b>\n\n"
-            "Сейчас новых заданий для тебя нет — ты выполнил всё доступное. "
+            f"{ce('tasks')} <b>ЗАДАНИЯ ГИЛЬДИИ</b>\n\n"
+            f"{ce('info')} Сейчас новых заданий для тебя нет — ты выполнил всё доступное. "
             "Система регулярно присылает новые подземелья, загляни позже.\n\n"
-            f"📅 Сегодня можно ещё: <b>{remaining}</b> из <b>{limit}</b>\n"
-            f"🔹 Твой баланс: <b>{format_mana(balance)}</b>\n"
+            f"{limit_line}"
+            f"{ce('coin')} Твой баланс: <b>{format_mana(balance)}</b>\n"
             f"{perk_line}"
         )
         b = InlineKeyboardBuilder()
@@ -126,17 +126,16 @@ async def _render_tasks(user_id: int) -> tuple[str, InlineKeyboardBuilder]:
         return text, b
 
     text = (
-        "📋 <b>ЗАДАНИЯ ГИЛЬДИИ</b>\n"
-        "<i>Твой личный подбор на сегодня — без повторов. Выполняй и добывай руду.</i>\n\n"
+        f"{ce('tasks')} <b>ЗАДАНИЯ ГИЛЬДИИ</b>\n"
+        f"<i>{ce('spark')} Твой личный подбор на сегодня — без повторов. Выполняй и добывай руду.</i>\n\n"
         f"{limit_line}"
-        f"🔹 Твой баланс: <b>{format_mana(balance)}</b>\n"
+        f"{ce('coin')} Твой баланс: <b>{format_mana(balance)}</b>\n"
         f"{mult_line}"
         f"{perk_line}\n"
-        "1. Подпишись на канал по кнопке.\n"
-        "2. Нажми «Проверить» — Система начислит руду (с учётом множителей).\n"
-        "3. <b>Не отписывайся</b> от каналов — иначе руда отзывается, стрик сбрасывается.\n"
-        "   При отписке придёт сообщение с кнопками «вернуться на канал».\n\n"
-        "Обменять руду на подарок: /redeem · Привилегии: /privileges"
+        f"{ce('check')} Подпишись на канал по кнопке.\n"
+        f"{ce('check')} Нажми «Проверить» — Система начислит руду.\n"
+        f"{ce('warn')} <b>Не отписывайся</b> от каналов — иначе руда отзывается.\n\n"
+        f"{ce('gift')} Обмен: /redeem  ·  {ce('premium')} Привилегии: /privileges"
     )
     return text, _tasks_keyboard(tasks)
 
