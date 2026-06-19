@@ -140,6 +140,8 @@ ADMIN_COMMANDS = PUBLIC_COMMANDS + ADMIN_ONLY_COMMANDS
 OWNER_COMMANDS = PRIVATE_COMMANDS + [
     BotCommand(command="owner", description="👑 Панель владельца"),
     BotCommand(command="gstats", description="📊 Глобальная статистика"),
+    BotCommand(command="bank", description="🏦 Центральный банк / P&L"),
+    BotCommand(command="announce", description="📣 Пост в канал бота"),
     BotCommand(command="chats", description="💬 Список чатов"),
     BotCommand(command="broadcast", description="📢 Рассылка"),
     BotCommand(command="newad", description="📢 Новая рекламная кампания"),

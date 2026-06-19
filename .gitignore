@@ -9,6 +9,9 @@ data/*.db-wal
 # Backups (snapshots of the DB)
 backups/
 
+# Локальные артефакты для просмотра (превью постов, сэмплы) — не коммитим
+samples/
+
 # Logs
 logs/*.log
 

@@ -249,3 +249,22 @@ async def get_mana_emission() -> dict:
     ) as cur:
         row = await cur.fetchone()
     return dict(row)
+
+
+async def mana_emission_by_reason() -> list[dict]:
+    """
+    Эмиссия руды по источникам для «центрального банка»: сколько напечатано
+    (положительные начисления) и сколько изъято (отрицательные: трата/clawback)
+    в разрезе reason. Сортировка по объёму эмиссии.
+    """
+    db = await get_db()
+    async with db.execute(
+        """SELECT reason,
+                  COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) AS minted,
+                  COALESCE(SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END), 0) AS burned
+           FROM mana_tx
+           GROUP BY reason
+           ORDER BY minted DESC"""
+    ) as cur:
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]

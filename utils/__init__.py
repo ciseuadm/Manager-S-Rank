@@ -16,6 +16,7 @@ from .texts import (
     SHOP_MSG, COMING_SOON_MSG, VIP_PROGRESS_MSG, VIP_OPEN_MSG,
     GUILD_CARD_MSG, GUILD_NO_NAME_HINT, GUILD_RENAMED_MSG, GUILD_NAME_BAD_MSG,
     GUILD_TOP_HEADER, GUILD_TOP_EMPTY,
+    ANNOUNCE_LAUNCH, ANNOUNCE_REFERRAL,
 )
 from .helpers import (
     mention_html, mention_html_raw, escape_html, safe_format,
@@ -42,6 +43,7 @@ __all__ = [
     "SHOP_MSG", "COMING_SOON_MSG", "VIP_PROGRESS_MSG", "VIP_OPEN_MSG",
     "GUILD_CARD_MSG", "GUILD_NO_NAME_HINT", "GUILD_RENAMED_MSG", "GUILD_NAME_BAD_MSG",
     "GUILD_TOP_HEADER", "GUILD_TOP_EMPTY",
+    "ANNOUNCE_LAUNCH", "ANNOUNCE_REFERRAL",
     "mention_html", "mention_html_raw", "escape_html", "safe_format",
     "parse_time_arg", "get_target_user",
     "set_owner_id", "get_owner_id", "is_owner", "is_chat_admin", "is_chat_staff",

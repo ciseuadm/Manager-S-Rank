@@ -260,6 +260,37 @@ async def set_payout_status(req_id: int, status: str, note: str = "") -> None:
     await db.commit()
 
 
+async def payout_cost_summary() -> dict:
+    """Сводка по обмену руды на подарки (для P&L центрального банка):
+    сколько руды выдано подарками (approved) и их себестоимость в центах,
+    плюс число ожидающих заявок и зарезервированной в них руды (escrow)."""
+    db = await get_db()
+    async with db.execute(
+        """SELECT
+             COALESCE(SUM(CASE WHEN status='approved' THEN amount ELSE 0 END),0) AS paid_mana,
+             COALESCE(SUM(CASE WHEN status='approved' THEN usd_cents ELSE 0 END),0) AS paid_usd_cents,
+             COALESCE(SUM(CASE WHEN status='pending' THEN amount ELSE 0 END),0) AS pending_mana,
+             COALESCE(SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END),0) AS pending_count
+           FROM payout_requests"""
+    ) as cur:
+        return dict(await cur.fetchone())
+
+
+async def sponsor_revenue_cents() -> int:
+    """Суммарный доход от спонсоров: за каждую засчитанную подписку начисляем
+    revenue_cents соответствующего задания (сколько рекламодатель платит за
+    подписчика). Это приходная часть «банка» в копейках."""
+    db = await get_db()
+    async with db.execute(
+        """SELECT COALESCE(SUM(t.revenue_cents), 0) AS cents
+           FROM task_completions tc
+           JOIN tasks t ON t.id = tc.task_id
+           WHERE tc.status = 'credited'"""
+    ) as cur:
+        row = await cur.fetchone()
+    return row["cents"] if row else 0
+
+
 # ── Achievements ─────────────────────────────────────────────────────────────
 
 async def has_achievement(user_id: int, code: str) -> bool:

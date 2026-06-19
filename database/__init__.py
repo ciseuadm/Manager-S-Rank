@@ -12,6 +12,7 @@ from .models import (
 from .economy import (
     get_wallet, get_wallet_balance, add_mana, spend_mana, revert_mana,
     can_reward_message, mark_message_reward, get_top_mana, get_mana_emission,
+    mana_emission_by_reason,
     claim_dungeon, get_wallet_rank, set_wallet_rank,
     get_xp, add_xp, sub_xp,
 )
@@ -43,6 +44,7 @@ from .tasks import (
     mark_completion_released, end_task_sponsorship,
     get_user_channel_task_completions,
     create_payout_request, get_payout_request, list_payout_requests, set_payout_status,
+    payout_cost_summary, sponsor_revenue_cents,
     has_achievement, count_achievement, award_achievement,
     award_achievement_capped, get_user_achievements,
 )
@@ -60,6 +62,7 @@ __all__ = [
     # economy
     "get_wallet", "get_wallet_balance", "add_mana", "spend_mana", "revert_mana",
     "can_reward_message", "mark_message_reward", "get_top_mana", "get_mana_emission",
+    "mana_emission_by_reason",
     "claim_dungeon", "get_wallet_rank", "set_wallet_rank",
     # referrals
     "add_referral", "count_referrals", "count_bot_referrals",
@@ -87,6 +90,7 @@ __all__ = [
     "mark_completion_released", "end_task_sponsorship",
     "get_user_channel_task_completions",
     "create_payout_request", "get_payout_request", "list_payout_requests", "set_payout_status",
+    "payout_cost_summary", "sponsor_revenue_cents",
     "has_achievement", "count_achievement", "award_achievement",
     "award_achievement_capped", "get_user_achievements",
 ]
