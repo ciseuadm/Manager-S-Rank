@@ -17,9 +17,7 @@ from .texts import (
     GUILD_CARD_MSG, GUILD_NO_NAME_HINT, GUILD_RENAMED_MSG, GUILD_NAME_BAD_MSG,
     GUILD_TOP_HEADER, GUILD_TOP_EMPTY,
     ANNOUNCE_LAUNCH, ANNOUNCE_REFERRAL,
-    BOT_ADDED_WELCOME, BOT_NEEDS_ADMIN_MSG, CHAT_OWNER_REWARD_MSG,
-    CHAT_RECRUIT_MILESTONE_MSG, MYCHATS_MSG, MYCHATS_EMPTY_HINT,
-    CAPTCHA_PROMPT, CAPTCHA_SOLVED_MSG, CAS_BANNED_MSG, RAID_MSG,
+    BOT_ADDED_WELCOME, BOT_NEEDS_ADMIN_MSG, CAS_BANNED_MSG, RAID_MSG,
 )
 from .helpers import (
     mention_html, mention_html_raw, escape_html, safe_format,
@@ -48,9 +46,7 @@ __all__ = [
     "GUILD_CARD_MSG", "GUILD_NO_NAME_HINT", "GUILD_RENAMED_MSG", "GUILD_NAME_BAD_MSG",
     "GUILD_TOP_HEADER", "GUILD_TOP_EMPTY",
     "ANNOUNCE_LAUNCH", "ANNOUNCE_REFERRAL",
-    "BOT_ADDED_WELCOME", "BOT_NEEDS_ADMIN_MSG", "CHAT_OWNER_REWARD_MSG",
-    "CHAT_RECRUIT_MILESTONE_MSG", "MYCHATS_MSG", "MYCHATS_EMPTY_HINT",
-    "CAPTCHA_PROMPT", "CAPTCHA_SOLVED_MSG", "CAS_BANNED_MSG", "RAID_MSG",
+    "BOT_ADDED_WELCOME", "BOT_NEEDS_ADMIN_MSG", "CAS_BANNED_MSG", "RAID_MSG",
     "mention_html", "mention_html_raw", "escape_html", "safe_format",
     "parse_time_arg", "get_target_user",
     "set_owner_id", "get_owner_id", "is_owner", "is_chat_admin", "is_chat_staff",

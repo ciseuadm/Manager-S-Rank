@@ -24,7 +24,7 @@ from handlers import (
     moderation_router, admin_router, user_router, settings_router,
     owner_router, economy_router, referral_router, payments_router,
     ads_router, sponsors_router, tasks_router, cursor_router, fun_router,
-    menu_router, chat_lifecycle_router, guard_router, set_bot_id,
+    menu_router, chat_lifecycle_router, set_bot_id,
 )
 from services.cursor_bridge import bridge as cursor_bridge
 from middlewares import ThrottleMiddleware, SubGateMiddleware, EmojiFallbackMiddleware
@@ -79,7 +79,6 @@ PUBLIC_COMMANDS = [
     BotCommand(command="guild", description="🏛 Моя гильдия"),
     BotCommand(command="guilds", description="🏆 Рейтинг гильдий"),
     BotCommand(command="myref", description="🔗 Моя реф-ссылка"),
-    BotCommand(command="mychats", description="🏰 Мои чаты под охраной (награды)"),
     BotCommand(command="vip", description="👑 VIP-зал"),
     BotCommand(command="invites", description="👥 Топ по приглашениям"),
     BotCommand(command="transfer", description="💸 Передать руду (ответом)"),
@@ -107,7 +106,6 @@ PRIVATE_COMMANDS = [
     BotCommand(command="guild", description="🏛 Моя гильдия"),
     BotCommand(command="guilds", description="🏆 Рейтинг гильдий"),
     BotCommand(command="myref", description="🔗 Моя реф-ссылка"),
-    BotCommand(command="mychats", description="🏰 Мои чаты под охраной (награды)"),
     BotCommand(command="vip", description="👑 VIP-зал"),
     BotCommand(command="donate", description="💛 Поддержать проект"),
     BotCommand(command="advertise", description="📣 Реклама канала у нас"),
@@ -275,7 +273,6 @@ async def main() -> None:
     # Routers — order matters: moderation last so admin commands take priority
     dp.include_router(owner_router)
     dp.include_router(chat_lifecycle_router)
-    dp.include_router(guard_router)
     dp.include_router(menu_router)
     dp.include_router(tasks_router)
     dp.include_router(sponsors_router)

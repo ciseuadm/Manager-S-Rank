@@ -1,26 +1,27 @@
 """
 Функции доверия для модерации новичков (включаются админом чата):
   • CAS-бан — авто-бан известных спам-ботов по глобальной базе cas.chat;
-  • анти-рейд — при всплеске входов временный режим «только чтение» для новичков;
-  • капча — кнопка «я не бот», до прохождения новичок не может писать.
+  • анти-рейд — при всплеске входов временный режим «только чтение» для новичков.
 
-Бизнес-логика; раздаёт побочные эффекты через bot. Состояние рейда/капчи —
-в памяти процесса (этого достаточно: данные эфемерны и не критичны к рестарту).
+Капчи нет намеренно: «живость» новичка и так проверяется экономикой — награда
+за реферала платится только когда приглашённый поднимет ранг D (подписки на
+каналы + ежедневный сбор командой), что отсекает мёртвые/ботовые аккаунты.
+
+Бизнес-логика; раздаёт побочные эффекты через bot. Состояние рейда — в памяти
+процесса (этого достаточно: данные эфемерны и не критичны к рестарту).
 """
-import asyncio
 import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 
 import aiohttp
 from aiogram import Bot
-from aiogram.types import ChatMemberUpdated, InlineKeyboardButton
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import ChatMemberUpdated
 from loguru import logger
 
 from database import get_chat_settings, ban_user, increment_stat
-from utils import mention_html_raw, CAPTCHA_PROMPT, CAS_BANNED_MSG, RAID_MSG
-from utils.tg_safe import safe_ban, safe_mute, safe_unmute, safe_kick
+from utils import CAS_BANNED_MSG, RAID_MSG
+from utils.tg_safe import safe_ban, safe_mute
 
 # ── Anti-raid ────────────────────────────────────────────────────────────────
 _RAID_WINDOW = 30        # окно наблюдения, сек
@@ -60,72 +61,12 @@ async def cas_banned(user_id: int) -> bool:
         return False
 
 
-# ── Captcha ───────────────────────────────────────────────────────────────────
-CAPTCHA_TIMEOUT = 120
-# (chat_id, user_id) -> message_id капчи
-_pending_captcha: dict[tuple[int, int], int] = {}
-
-
-def _captcha_keyboard(chat_id: int, user_id: int):
-    b = InlineKeyboardBuilder()
-    b.row(InlineKeyboardButton(
-        text="✅ Я не бот", callback_data=f"captcha:{chat_id}:{user_id}",
-    ))
-    return b.as_markup()
-
-
-async def _captcha_timeout(bot: Bot, chat_id: int, user_id: int) -> None:
-    await asyncio.sleep(CAPTCHA_TIMEOUT)
-    msg_id = _pending_captcha.pop((chat_id, user_id), None)
-    if msg_id is None:
-        return  # уже решена
-    await safe_kick(bot, chat_id, user_id)
-    try:
-        await bot.delete_message(chat_id, msg_id)
-    except Exception:
-        pass
-    logger.info(f"[GUARD] captcha timeout: kicked {user_id} from {chat_id}")
-
-
-async def _start_captcha(bot: Bot, chat_id: int, user) -> None:
-    if not await safe_mute(bot, chat_id, user.id):
-        return  # нет прав ограничивать — капчу не навязываем
-    try:
-        m = await bot.send_message(
-            chat_id,
-            CAPTCHA_PROMPT.format(
-                mention=mention_html_raw(user.id, user.full_name),
-                seconds=CAPTCHA_TIMEOUT,
-            ),
-            parse_mode="HTML",
-            reply_markup=_captcha_keyboard(chat_id, user.id),
-        )
-    except Exception:
-        await safe_unmute(bot, chat_id, user.id)
-        return
-    _pending_captcha[(chat_id, user.id)] = m.message_id
-    asyncio.create_task(_captcha_timeout(bot, chat_id, user.id))
-
-
-async def solve_captcha(bot: Bot, chat_id: int, user_id: int) -> bool:
-    """Новичок нажал «Я не бот». Снимаем мут и убираем сообщение капчи."""
-    if (chat_id, user_id) not in _pending_captcha:
-        return False
-    msg_id = _pending_captcha.pop((chat_id, user_id))
-    await safe_unmute(bot, chat_id, user_id)
-    try:
-        await bot.delete_message(chat_id, msg_id)
-    except Exception:
-        pass
-    return True
-
-
 # ── Единая точка скрининга новичка ─────────────────────────────────────────────
 async def screen_newcomer(bot: Bot, event: ChatMemberUpdated) -> bool:
     """
     Проверяет нового участника фильтрами доверия (если включены в чате).
-    Возвращает True, если вход обработан (бан/рейд-мут/капча) и обычное
-    приветствие показывать НЕ нужно.
+    Возвращает True, если вход обработан (бан/рейд-мут) и обычное приветствие
+    показывать НЕ нужно.
     """
     chat = event.chat
     user = event.new_chat_member.user
@@ -158,10 +99,5 @@ async def screen_newcomer(bot: Bot, event: ChatMemberUpdated) -> bool:
                 except Exception:
                     pass
             return True
-
-    # 3) Капча «я не бот».
-    if settings.get("captcha", 0):
-        await _start_captcha(bot, chat.id, user)
-        return True
 
     return False

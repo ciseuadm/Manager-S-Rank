@@ -9,8 +9,8 @@ from .referral import (
     vip_rank_status, notify_vip_unlocked,
     reward_agent_on_rank, AGENT_REWARDS,
 )
-from .chat_growth import handle_bot_membership, progress_line
-from .guard import screen_newcomer, solve_captcha, cas_banned
+from .chat_growth import handle_bot_membership
+from .guard import screen_newcomer, cas_banned
 from .ranks import sync_rank, sync_task_rank, rank_card, get_rank_score
 from .ads_scheduler import send_due_ads, send_campaign_now, send_campaign
 from .tasks import (
@@ -37,8 +37,8 @@ __all__ = [
     "register_bot_referral", "register_chat_referral", "vip_status",
     "vip_rank_status", "notify_vip_unlocked",
     "reward_agent_on_rank", "AGENT_REWARDS",
-    "handle_bot_membership", "progress_line",
-    "screen_newcomer", "solve_captcha", "cas_banned",
+    "handle_bot_membership",
+    "screen_newcomer", "cas_banned",
     "sync_rank", "sync_task_rank", "rank_card", "get_rank_score",
     "send_due_ads", "send_campaign_now", "send_campaign",
     "reward_for_revenue", "mana_to_usd_cents", "mana_to_rub", "list_available_tasks",

@@ -24,12 +24,6 @@ from .referrals import (
     get_primary_referral, set_referral_paid_rank,
     has_goal_award, record_goal_award,
 )
-from .chat_referrals import (
-    record_chat_referral, get_chat_referral, set_chat_referral_admin,
-    mark_chat_referral_rewarded, mark_chat_referral_left,
-    count_active_chats_brought, list_chats_brought, top_chat_recruiters,
-    get_recruit_blocks_paid, set_recruit_blocks_paid,
-)
 from .guilds import (
     get_guild, get_or_create_guild, set_guild_name, set_guild_blocks,
     guild_member_count, guild_rank_counts, top_guilds,
@@ -82,10 +76,6 @@ __all__ = [
     "get_primary_referral", "set_referral_paid_rank",
     "has_goal_award", "record_goal_award",
     # chat acquisition (owner-рефералка)
-    "record_chat_referral", "get_chat_referral", "set_chat_referral_admin",
-    "mark_chat_referral_rewarded", "mark_chat_referral_left",
-    "count_active_chats_brought", "list_chats_brought", "top_chat_recruiters",
-    "get_recruit_blocks_paid", "set_recruit_blocks_paid",
     "get_xp", "add_xp", "sub_xp",
     # guilds
     "get_guild", "get_or_create_guild", "set_guild_name", "set_guild_blocks",

@@ -57,14 +57,6 @@ class Config:
     vip_invite_threshold: int = 50       # приглашений в бота для VIP-доступа
     vip_chat_link: str = ""              # инвайт-ссылка в VIP-чат с разработчиком
 
-    # ── Привлечение чатов (owner-рефералка — главный рычаг роста) ─────────────
-    # За каждый чат, куда охотник добавил бота И дал ему админку, начисляем руду
-    # (один раз на чат). За каждые chat_recruit_block приведённых активных чатов
-    # — крупный веховой бонус. Так каждый админ становится нашим распространителем.
-    mana_chat_owner_bonus: int = 2000
-    chat_recruit_block: int = 5
-    chat_recruit_block_reward: int = 5000
-
     # ── Tasks economy (платные задания) ──────────────────────────────────────
     # Пег для пользователя: 50 руды = 1 ₽. Подписка 2 ₽ → 50 руды охотнику, 50 — маржа.
     mana_per_rub: int = 50
@@ -193,9 +185,6 @@ def load_config() -> Config:
         dungeon_streak_reward=_get_int("DUNGEON_STREAK_REWARD", 1000),
         vip_invite_threshold=_get_int("VIP_INVITE_THRESHOLD", 50),
         vip_chat_link=os.getenv("VIP_CHAT_LINK", ""),
-        mana_chat_owner_bonus=_get_int("MANA_CHAT_OWNER_BONUS", 2000),
-        chat_recruit_block=_get_int("CHAT_RECRUIT_BLOCK", 5),
-        chat_recruit_block_reward=_get_int("CHAT_RECRUIT_BLOCK_REWARD", 5000),
         mana_per_rub=_get_int("MANA_PER_RUB", 50),
         stars_usd_cents_per_1000=_get_int("STARS_USD_CENTS_PER_1000", 1620),
         usd_rub_rate=_get_int("USD_RUB_RATE", 76),
