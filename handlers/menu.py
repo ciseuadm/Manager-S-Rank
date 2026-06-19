@@ -206,7 +206,7 @@ async def cb_menu_ref(call: CallbackQuery) -> None:
         f"• D +{d} · C +100 · B +200 · A +400 · S +800 руды\n"
         "Один охотник, раскачанный до S = <b>1550 руды</b>.\n\n"
         f"{ce('link')} Твоя ссылка:\n<code>{escape_html(link)}</code>\n\n"
-        f"{ce('people')} Приглашено: <b>{count}</b>"
+        f"{ce('person')} Приглашено: <b>{count}</b>"
         + (f" · до VIP осталось <b>{max(0, threshold - count)}</b>" if not is_vip else
            f" · {ce('crown')} <b>VIP открыт</b>")
     )
