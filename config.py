@@ -138,6 +138,15 @@ class Config:
     crypto_min_mana: int = 5000          # минимум на вывод (≈100 ₽ при 50 руды/₽)
     crypto_daily_limit_mana: int = 50000 # потолок суммы заявок в сутки на охотника
 
+    # ── Mini App (Telegram WebApp) ───────────────────────────────────────────
+    # Бэкенд Mini App поднимается в том же процессе (aiohttp) на webapp_port.
+    # webapp_url — ПУБЛИЧНЫЙ https-адрес (нужен для кнопки web_app в Telegram).
+    # На Railway: задать WEBAPP_URL = https://<your-app>.up.railway.app, порт
+    # берётся из PORT автоматически. Локально/без https кнопка web_app скрыта.
+    webapp_enabled: bool = False
+    webapp_url: str = ""                 # СЮДА ВСТАВИТЬ публичный https-адрес Mini App
+    webapp_port: int = 8080
+
     # ── Cursor-мост (Cloud Agents API → GitHub-репозиторий проекта) ───────────
     cursor_api_key: str = ""
     cursor_repo_url: str = "https://github.com/ciseuadm/Manager-S-Rank"
@@ -251,6 +260,9 @@ def load_config() -> Config:
         crypto_api_base=os.getenv("CRYPTO_API_BASE", "https://pay.crypt.bot/api").strip(),
         crypto_min_mana=_get_int("CRYPTO_MIN_MANA", 5000),
         crypto_daily_limit_mana=_get_int("CRYPTO_DAILY_LIMIT_MANA", 50000),
+        webapp_enabled=_get_bool("WEBAPP_ENABLED", False),
+        webapp_url=os.getenv("WEBAPP_URL", "").strip(),
+        webapp_port=_get_int("PORT", _get_int("WEBAPP_PORT", 8080)),
         cursor_api_key=os.getenv("CURSOR_API_KEY", "").strip(),
         cursor_repo_url=os.getenv("CURSOR_REPO_URL", "https://github.com/ciseuadm/Manager-S-Rank").strip(),
         cursor_repo_ref=os.getenv("CURSOR_REPO_REF", "main").strip(),

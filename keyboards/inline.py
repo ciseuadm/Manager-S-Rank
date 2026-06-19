@@ -142,6 +142,18 @@ def welcome_keyboard(
 def main_menu_keyboard() -> InlineKeyboardMarkup:
     """Главный кнопочный хаб (личка): всё важное в одном сообщении, без команд."""
     b = InlineKeyboardBuilder()
+    # Кнопка-витрина Mini App (если задан публичный https-адрес).
+    try:
+        from utils import get_config
+        cfg = get_config()
+        if cfg.webapp_enabled and cfg.webapp_url.startswith("https://"):
+            from aiogram.types import WebAppInfo
+            b.row(InlineKeyboardButton(
+                text="🎮 Открыть платформу",
+                web_app=WebAppInfo(url=cfg.webapp_url),
+            ))
+    except Exception:
+        pass
     b.row(
         InlineKeyboardButton(text="👤 Профиль", callback_data="menu:profile"),
         InlineKeyboardButton(text="🔹 Кошелёк", callback_data="menu:wallet"),

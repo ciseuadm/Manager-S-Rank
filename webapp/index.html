@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>S-Ранг · Платформа</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root{
+    --bg: var(--tg-theme-bg-color, #0e0f1a);
+    --card: var(--tg-theme-secondary-bg-color, #181a2b);
+    --text: var(--tg-theme-text-color, #eef0ff);
+    --hint: var(--tg-theme-hint-color, #8a8fb5);
+    --accent: #7c5cff;
+    --accent2: #00d4ff;
+    --ok:#37d67a; --warn:#ffb020; --bad:#ff5470;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    padding-bottom:78px}
+  .wrap{max-width:560px;margin:0 auto;padding:16px}
+  .hdr{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+  .ava{width:48px;height:48px;border-radius:14px;flex:0 0 auto;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800}
+  .hi{font-size:13px;color:var(--hint)}
+  .nm{font-size:18px;font-weight:800}
+  .balance{background:linear-gradient(135deg,#221a47,#10233a);
+    border:1px solid #2c2f52;border-radius:20px;padding:18px 20px;margin-bottom:14px}
+  .bal-l{font-size:12px;color:var(--hint);text-transform:uppercase;letter-spacing:.5px}
+  .bal-v{font-size:34px;font-weight:900;margin-top:2px;
+    background:linear-gradient(90deg,#fff,var(--accent2));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .stat-row{display:flex;gap:10px;margin-top:12px}
+  .chip{flex:1;background:#0000003d;border-radius:12px;padding:8px 10px;text-align:center}
+  .chip b{display:block;font-size:16px}
+  .chip span{font-size:11px;color:var(--hint)}
+  .tabs{display:flex;gap:6px;position:fixed;left:0;right:0;bottom:0;
+    background:var(--card);border-top:1px solid #2c2f52;padding:8px;z-index:9}
+  .tab{flex:1;text-align:center;padding:8px 4px;border-radius:12px;font-size:11px;color:var(--hint);cursor:pointer}
+  .tab.active{background:var(--accent);color:#fff}
+  .tab .ic{display:block;font-size:18px;margin-bottom:2px}
+  h2{font-size:15px;margin:18px 4px 10px}
+  .card{background:var(--card);border:1px solid #2c2f52;border-radius:16px;
+    padding:14px;margin-bottom:10px}
+  .task-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+  .task-t{font-weight:700;font-size:15px}
+  .task-r{flex:0 0 auto;font-weight:800;color:var(--accent2)}
+  .task-meta{font-size:12px;color:var(--hint);margin-top:3px}
+  .btn{display:block;width:100%;border:0;border-radius:12px;padding:12px;
+    font-size:14px;font-weight:700;color:#fff;margin-top:10px;cursor:pointer;
+    background:linear-gradient(135deg,var(--accent),var(--accent2))}
+  .btn.sec{background:#2c2f52}
+  .btn:disabled{opacity:.5}
+  .row2{display:flex;gap:8px}
+  .row2 .btn{margin-top:10px}
+  .empty{text-align:center;color:var(--hint);padding:30px 10px}
+  .lead{display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid #20223a}
+  .lead .pos{width:26px;font-weight:800;color:var(--hint)}
+  .lead.me{background:#7c5cff22;border-radius:10px}
+  .lead .who{flex:1}
+  .lead .mn{font-weight:800;color:var(--accent2)}
+  .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);
+    background:#000d;color:#fff;padding:10px 18px;border-radius:30px;font-size:13px;
+    opacity:0;transition:.25s;z-index:20;max-width:90%}
+  .toast.show{opacity:1}
+  .toast.ok{background:#1d8a4dcc}.toast.bad{background:#b5283fcc}
+  .gift{display:flex;align-items:center;gap:12px}
+  .gift .em{font-size:28px}
+  .gift .gi{flex:1}
+  .gift .gt{font-weight:700}.gift .gs{font-size:12px;color:var(--hint)}
+  .skel{height:80px;border-radius:16px;background:linear-gradient(90deg,#181a2b,#23263f,#181a2b);
+    background-size:200% 100%;animation:sk 1.2s infinite;margin-bottom:10px}
+  @keyframes sk{0%{background-position:200% 0}100%{background-position:-200% 0}}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <div class="ava" id="ava">⚔️</div>
+    <div>
+      <div class="hi">Охотник</div>
+      <div class="nm" id="nm">—</div>
+    </div>
+  </div>
+
+  <div class="balance">
+    <div class="bal-l">Мана-руда</div>
+    <div class="bal-v" id="bal">—</div>
+    <div class="stat-row">
+      <div class="chip"><b id="rank">—</b><span>Ранг</span></div>
+      <div class="chip"><b id="streak">—</b><span>Стрик 🔥</span></div>
+      <div class="chip"><b id="rem">—</b><span>Заданий сегодня</span></div>
+    </div>
+  </div>
+
+  <div id="view-tasks">
+    <h2>📋 Задания на сегодня</h2>
+    <div id="tasks"><div class="skel"></div><div class="skel"></div></div>
+  </div>
+
+  <div id="view-shop" class="hidden">
+    <h2>🎁 Магазин наград</h2>
+    <div id="shop"></div>
+  </div>
+
+  <div id="view-top" class="hidden">
+    <h2>🏆 Топ охотников</h2>
+    <div id="top"></div>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-v="tasks"><span class="ic">📋</span>Задания</div>
+  <div class="tab" data-v="shop"><span class="ic">🎁</span>Магазин</div>
+  <div class="tab" data-v="top"><span class="ic">🏆</span>Топ</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const tg = window.Telegram?.WebApp;
+const initData = tg?.initData || "";
+let STATE = null;
+const fmt = n => (n||0).toLocaleString("ru-RU");
+
+if (tg){ tg.ready(); tg.expand(); }
+
+function toast(msg, kind){
+  const t=document.getElementById("toast");
+  t.textContent=msg; t.className="toast show "+(kind||"");
+  if(tg?.HapticFeedback){ kind==="bad"?tg.HapticFeedback.notificationOccurred("error"):tg.HapticFeedback.notificationOccurred("success"); }
+  setTimeout(()=>t.className="toast",2200);
+}
+
+async function api(path, extra){
+  const r = await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(Object.assign({initData}, extra||{}))});
+  return r.json();
+}
+
+function renderHeader(s){
+  document.getElementById("nm").textContent = s.user.name || "Охотник";
+  document.getElementById("bal").textContent = fmt(s.balance);
+  document.getElementById("rank").textContent = s.rank;
+  document.getElementById("streak").textContent = s.streak;
+  document.getElementById("rem").textContent = s.remaining + "/" + s.limit;
+}
+
+const CODE_MSG = {
+  credited:["+руда зачислена!","ok"], already:["Уже выполнено","bad"],
+  not_subscribed:["Сначала подпишись на канал","bad"], daily_limit:["Лимит на сегодня исчерпан","bad"],
+  locked:["Вернись на канал прошлого спонсора","bad"], inactive:["Задание неактивно","bad"],
+  misconfig:["Задание настраивается, попробуй позже","bad"], wrong_answer:["Неверный ответ","bad"],
+  watch_started:["Таймер пошёл — смотри и вернись","ok"], watch_wait:["Ещё рано, продолжай смотреть","bad"],
+};
+
+function taskCard(t){
+  const c=document.createElement("div"); c.className="card";
+  const url = t.url ? `<a href="${t.url}" style="color:var(--accent2)">Открыть ↗</a>` : "";
+  c.innerHTML = `<div class="task-top"><div><div class="task-t">${escapeHtml(t.title)}</div>
+    <div class="task-meta">${typeLabel(t)} · ${url}</div></div>
+    <div class="task-r">+${fmt(t.reward)}</div></div>`;
+  const btn=document.createElement("button"); btn.className="btn";
+  const mode=t.verify_mode;
+  btn.textContent = mode==="timer" ? `▶️ Я посмотрел (${t.duration_sec||30}с)` :
+                    mode==="quiz" ? "✍️ Ответить" :
+                    mode==="proof" ? "📤 Пруф — в боте" : "🔍 Проверить и забрать";
+  if(mode==="proof"){ btn.classList.add("sec"); btn.onclick=()=>{ tg?.close(); }; }
+  else btn.onclick=()=>doTask(t, btn);
+  c.appendChild(btn);
+  return c;
+}
+function typeLabel(t){
+  return ({channel_sub:"📣 Подписка",chat_join:"👥 Вступление",watch:"▶️ Просмотр",
+    quiz:"❓ Квиз",bot_start:"🤖 Бот",react:"👍 Реакция",boost:"🚀 Буст",external:"🌐 Оффер"})[t.type]||"📌 Задание";
+}
+
+async function doTask(t, btn){
+  btn.disabled=true;
+  let res;
+  if(t.verify_mode==="timer"){ res=await api("/api/task/watch",{task_id:t.id}); }
+  else if(t.verify_mode==="quiz"){
+    const ans=prompt("Твой ответ:"); if(ans===null){btn.disabled=false;return;}
+    res=await api("/api/task/quiz",{task_id:t.id,answer:ans});
+  } else { res=await api("/api/task/check",{task_id:t.id}); }
+  btn.disabled=false;
+  if(!res.ok){ toast("Ошибка авторизации","bad"); return; }
+  if(res.code==="credited"){ toast(`+${fmt(res.reward)} руды!`,"ok"); await load(); return; }
+  const m=CODE_MSG[res.code]||["Готово","ok"]; toast(m[0],m[1]);
+  if(res.code==="watch_started") { /* оставляем кнопку для повторного клика */ }
+}
+
+function renderTasks(s){
+  const box=document.getElementById("tasks"); box.innerHTML="";
+  if(!s.tasks.length){
+    box.innerHTML = s.remaining<=0
+      ? `<div class="empty">🎉 Лимит на сегодня выполнен!<br>Возвращайся завтра за новой рудой.</div>`
+      : `<div class="empty">Пока нет доступных заданий.<br>Загляни позже — спонсоры добавятся.</div>`;
+    return;
+  }
+  s.tasks.forEach(t=>box.appendChild(taskCard(t)));
+}
+
+async function renderShop(){
+  const box=document.getElementById("shop"); box.innerHTML='<div class="skel"></div>';
+  const r=await api("/api/shop");
+  if(!r.ok){box.innerHTML='<div class="empty">Ошибка</div>';return;}
+  box.innerHTML="";
+  r.catalog.forEach(g=>{
+    const c=document.createElement("div"); c.className="card gift";
+    c.innerHTML=`<div class="em">${g.emoji}</div><div class="gi">
+      <div class="gt">${escapeHtml(g.title)}</div>
+      <div class="gs">${escapeHtml(g.subtitle)} · ${fmt(g.mana_price)} руды</div></div>`;
+    const b=document.createElement("button"); b.className="btn"; b.style.width="auto"; b.style.margin=0;
+    b.style.padding="10px 14px"; b.textContent="Обменять"; b.disabled=!g.affordable;
+    b.onclick=()=>redeem(g.key,b);
+    c.appendChild(b); box.appendChild(c);
+  });
+  if(r.crypto_enabled){
+    const c=document.createElement("div"); c.className="card";
+    c.innerHTML=`<div class="task-t">🪙 Вывод в ${r.crypto_asset}</div>
+      <div class="task-meta">Минимум ${fmt(r.crypto_min)} руды · через @CryptoBot</div>`;
+    const b=document.createElement("button"); b.className="btn"; b.textContent="Вывести в крипте";
+    b.onclick=()=>cryptoPayout(r.crypto_min);
+    c.appendChild(b); box.appendChild(c);
+  }
+}
+
+async function redeem(key,b){
+  b.disabled=true;
+  const r=await api("/api/redeem",{key});
+  if(!r.ok){ toast(r.error||"Не вышло","bad"); b.disabled=false; return; }
+  toast(r.sent?"🎁 Подарок отправлен!":"✅ Заявка создана","ok");
+  await load(); renderShop();
+}
+
+async function cryptoPayout(min){
+  const v=prompt("Сколько руды вывести? (минимум "+min+")");
+  if(v===null) return; const amount=parseInt(v,10);
+  if(!amount||amount<=0){toast("Неверная сумма","bad");return;}
+  const r=await api("/api/payout_crypto",{amount});
+  if(!r.ok){ toast(r.error||"Не вышло","bad"); return; }
+  toast("✅ Заявка на вывод создана","ok"); await load(); renderShop();
+}
+
+async function renderTop(){
+  const box=document.getElementById("top"); box.innerHTML='<div class="skel"></div>';
+  const r=await api("/api/leaderboard");
+  if(!r.ok){box.innerHTML='<div class="empty">Ошибка</div>';return;}
+  box.innerHTML="";
+  if(!r.top.length){box.innerHTML='<div class="empty">Пока пусто</div>';return;}
+  const medal=["🥇","🥈","🥉"];
+  r.top.forEach(x=>{
+    const d=document.createElement("div"); d.className="lead"+(x.is_me?" me":"");
+    d.innerHTML=`<div class="pos">${medal[x.rank-1]||x.rank}</div>
+      <div class="who">${x.is_me?"Ты":"Охотник #"+String(x.user_id).slice(-4)}</div>
+      <div class="mn">${fmt(x.mana)}</div>`;
+    box.appendChild(d);
+  });
+}
+
+function escapeHtml(s){return String(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+
+async function load(){
+  const s=await api("/api/state");
+  if(!s.ok){ document.getElementById("tasks").innerHTML='<div class="empty">Открой Mini App из Telegram.</div>'; return; }
+  STATE=s; renderHeader(s); renderTasks(s);
+}
+
+document.querySelectorAll(".tab").forEach(tab=>{
+  tab.onclick=()=>{
+    document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+    tab.classList.add("active");
+    const v=tab.dataset.v;
+    ["tasks","shop","top"].forEach(x=>document.getElementById("view-"+x).classList.toggle("hidden",x!==v));
+    if(v==="shop") renderShop();
+    if(v==="top") renderTop();
+  };
+});
+
+load();
+</script>
+</body>
+</html>

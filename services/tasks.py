@@ -189,8 +189,8 @@ async def daily_tasks_view(user_id: int) -> dict:
     active = await get_active_tasks()
     done_ids = await get_completed_task_ids(user_id)
     pool = [t for t in active if t["id"] not in done_ids]  # без повторов
-    # Стабильный индивидуальный порядок в течение суток: новые спонсоры выше.
-    pool.sort(key=lambda t: t["id"], reverse=True)
+    # Платный приоритет выше всего, затем — новые спонсоры (по id).
+    pool.sort(key=lambda t: (t.get("priority", 0), t["id"]), reverse=True)
     todays = pool[:remaining]
     for t in todays:
         t["done"] = False

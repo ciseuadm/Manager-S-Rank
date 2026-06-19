@@ -14,6 +14,7 @@ from aiogram.types import (
     BotCommand, BotCommandScopeDefault, BotCommandScopeAllPrivateChats,
     BotCommandScopeAllGroupChats, BotCommandScopeAllChatAdministrators,
     BotCommandScopeChat, ErrorEvent,
+    MenuButtonWebApp, MenuButtonCommands, WebAppInfo,
 )
 from aiogram.exceptions import TelegramRetryAfter
 from loguru import logger
@@ -228,6 +229,22 @@ async def on_startup(bot: Bot, config) -> None:
         await setup_commands(bot, config.owner_id)
     except Exception as e:
         logger.warning(f"set_my_commands error: {e}")
+
+    # Кнопка-меню рядом с полем ввода в ЛС: открывает Mini App, если задан
+    # публичный https-адрес (требование Telegram для web_app).
+    try:
+        if config.webapp_enabled and config.webapp_url.startswith("https://"):
+            await bot.set_chat_menu_button(
+                menu_button=MenuButtonWebApp(
+                    text="🎮 Платформа",
+                    web_app=WebAppInfo(url=config.webapp_url),
+                )
+            )
+            logger.info("Mini App: кнопка-меню web_app установлена")
+        else:
+            await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+    except Exception as e:
+        logger.warning(f"set_chat_menu_button error: {e}")
     logger.info(f"Bot started: @{me.username} (ID: {me.id}) | Owner: {config.owner_id}")
 
     if config.log_channel_id:
@@ -242,11 +259,16 @@ async def on_startup(bot: Bot, config) -> None:
             logger.warning(f"Log channel error: {e}")
 
 
-async def on_shutdown(bot: Bot, scheduler=None) -> None:
+async def on_shutdown(bot: Bot, scheduler=None, webapp_runner=None) -> None:
     logger.info("Bot shutting down...")
     if scheduler is not None:
         try:
             scheduler.shutdown(wait=False)
+        except Exception:
+            pass
+    if webapp_runner is not None:
+        try:
+            await webapp_runner.cleanup()
         except Exception:
             pass
     try:
@@ -316,13 +338,19 @@ async def main() -> None:
     dp.errors.register(on_error)
 
     scheduler = setup_scheduler(bot, config)
+    webapp_state: dict = {}
 
     async def _startup() -> None:
         await on_startup(bot, config)
         scheduler.start()
+        try:
+            from services.webapp import start_webapp
+            webapp_state["runner"] = await start_webapp(bot)
+        except Exception as e:
+            logger.warning(f"Mini App backend не запущен: {e}")
 
     async def _shutdown() -> None:
-        await on_shutdown(bot, scheduler)
+        await on_shutdown(bot, scheduler, webapp_state.get("runner"))
 
     dp.startup.register(_startup)
     dp.shutdown.register(_shutdown)
