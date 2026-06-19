@@ -181,6 +181,14 @@ _NEW_COLUMNS = {
         "dungeon_streak": "INTEGER DEFAULT 0",
         "dungeon_streak_best": "INTEGER DEFAULT 0",
         "dungeon_streak_30": "INTEGER DEFAULT 0",
+        # Глобальный ранг (по числу выполненных заданий). Хранится, чтобы
+        # ловить повышения и не слать одно и то же повышение дважды.
+        "rank": "TEXT DEFAULT 'E'",
+    },
+    "referrals": {
+        # Наивысший ранг рекрута, за который агенту уже выплачена награда
+        # ('' = ещё ничего). Позволяет платить агенту за каждую новую веху.
+        "paid_rank": "TEXT DEFAULT ''",
     },
 }
 

@@ -205,6 +205,12 @@ async def check_and_credit_subscription(
     await add_mana(user_id, reward, "task_subscribe", ref_id=str(task_id))
     logger.info(f"[TASKS] credited user={user_id} task={task_id} +{reward} (streak={streak})")
     await check_milestones(bot, user_id)
+    # Ранг считается по числу выполненных заданий → пересчёт + бонус/агент.
+    try:
+        from .ranks import sync_task_rank
+        await sync_task_rank(bot, user_id)
+    except Exception:
+        pass
     return "credited", reward
 
 
@@ -263,6 +269,12 @@ async def recheck_subscriptions(bot: Bot) -> dict:
         )
         await mark_completion_reverted(c["comp_id"])
         reverted += 1
+        # Откат подписки может понизить ранг — тихо синхронизируем.
+        try:
+            from .ranks import sync_task_rank
+            await sync_task_rank(bot, c["user_id"], announce=False)
+        except Exception:
+            pass
         await notify_unsubscribe(
             bot, c["user_id"],
             clawback_title=c.get("title") or "",

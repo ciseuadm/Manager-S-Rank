@@ -51,13 +51,15 @@ class Config:
     mana_per_rub: int = 50
     stars_usd_cents_per_1000: int = 1620   # 1000 ⭐ = $16.20
     usd_rub_rate: int = 76
-    redeem_margin_pct: int = 30            # наценка на подарки
+    # Без наценки на обмен: вся маржа уже заложена в цене спонсора (он платит
+    # 3–4 ₽ за подписчика, охотнику уходит ~2 ₽). Курс честный: 50 руды = 1 ₽.
+    redeem_margin_pct: int = 0
     # Устаревший пег (для P&L владельца); основной курс — mana_per_rub.
     mana_per_usd: int = 20000
     task_payout_ratio: int = 50
-    task_reward_subscribe: int = 100       # 2 ₽ пользователю при подписке спонсора 4 ₽
+    task_reward_subscribe: int = 100       # 2 ₽ пользователю при подписке спонсора 3–4 ₽
     task_revenue_rub_default: int = 4      # доход с рекламодателя за подписчика
-    redeem_min: int = 1200                 # минимум = самый дешёвый подарок (15 ⭐)
+    redeem_min: int = 1000                 # самый дешёвый подарок (15 ⭐ ≈ 1000 руды)
     # Час по UTC ежедневной ре-проверки подписок (clawback при отписке).
     tasks_recheck_hour: int = 3
 
@@ -151,12 +153,12 @@ def load_config() -> Config:
         mana_per_rub=_get_int("MANA_PER_RUB", 50),
         stars_usd_cents_per_1000=_get_int("STARS_USD_CENTS_PER_1000", 1620),
         usd_rub_rate=_get_int("USD_RUB_RATE", 76),
-        redeem_margin_pct=_get_int("REDEEM_MARGIN_PCT", 30),
+        redeem_margin_pct=_get_int("REDEEM_MARGIN_PCT", 0),
         mana_per_usd=_get_int("MANA_PER_USD", 20000),
         task_payout_ratio=_get_int("TASK_PAYOUT_RATIO", 50),
         task_reward_subscribe=_get_int("TASK_REWARD_SUBSCRIBE", 100),
         task_revenue_rub_default=_get_int("TASK_REVENUE_RUB", 4),
-        redeem_min=_get_int("REDEEM_MIN", 1200),
+        redeem_min=_get_int("REDEEM_MIN", 1000),
         tasks_recheck_hour=_get_int("TASKS_RECHECK_HOUR", 3),
         task_streak_step_pct=_get_int("TASK_STREAK_STEP_PCT", 10),
         task_streak_cap=_get_int("TASK_STREAK_CAP", 10),

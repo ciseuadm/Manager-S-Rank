@@ -66,6 +66,30 @@ async def get_unrewarded_referral(invited_id: int) -> Optional[dict]:
     return dict(row) if row else None
 
 
+async def get_primary_referral(invited_id: int) -> Optional[dict]:
+    """
+    Самое раннее приглашение этого пользователя (агент-вербовщик), независимо от
+    статуса выплат. По нему платим агенту за каждую новую ранговую веху рекрута.
+    """
+    db = await get_db()
+    async with db.execute(
+        "SELECT * FROM referrals WHERE invited_id = ? ORDER BY id ASC LIMIT 1",
+        (invited_id,),
+    ) as cur:
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def set_referral_paid_rank(referral_id: int, rank: str) -> None:
+    """Фиксируем наивысший оплаченный ранг рекрута для конкретного приглашения."""
+    db = await get_db()
+    await db.execute(
+        "UPDATE referrals SET paid_rank = ?, rewarded = 1 WHERE id = ?",
+        (rank, referral_id),
+    )
+    await db.commit()
+
+
 async def mark_all_referrals_rewarded(invited_id: int) -> None:
     """Помечаем все приглашения этого новичка как выплаченные (платим один раз)."""
     db = await get_db()

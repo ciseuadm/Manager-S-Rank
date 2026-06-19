@@ -24,6 +24,20 @@ async def get_wallet_balance(user_id: int) -> int:
     return (await get_wallet(user_id)).get("mana", 0)
 
 
+async def get_wallet_rank(user_id: int) -> str:
+    return (await get_wallet(user_id)).get("rank", "E") or "E"
+
+
+async def set_wallet_rank(user_id: int, rank: str) -> None:
+    await get_wallet(user_id)
+    db = await get_db()
+    await db.execute(
+        "UPDATE wallets SET rank = ?, updated_at = datetime('now') WHERE user_id = ?",
+        (rank, user_id),
+    )
+    await db.commit()
+
+
 async def _log_tx(db, user_id: int, amount: int, reason: str,
                   ref_id: str = "", chat_id: int = 0) -> None:
     await db.execute(

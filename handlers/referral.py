@@ -43,11 +43,12 @@ async def cmd_myref(message: Message) -> None:
             bot_link=link, bot_count=count, vip_link=cfg.vip_chat_link
         )
     else:
+        from services import AGENT_REWARDS
         text = MYREF_MSG.format(
             bot_link=link,
             bot_count=count,
             to_vip=max(0, threshold - count),
-            bonus=format_mana(cfg.mana_invite_bonus),
+            bonus=format_mana(AGENT_REWARDS.get("D", cfg.mana_referral_rankup)),
         )
     await message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
 

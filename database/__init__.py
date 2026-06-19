@@ -12,13 +12,14 @@ from .models import (
 from .economy import (
     get_wallet, get_wallet_balance, add_mana, spend_mana, revert_mana,
     can_reward_message, mark_message_reward, get_top_mana, get_mana_emission,
-    claim_dungeon,
+    claim_dungeon, get_wallet_rank, set_wallet_rank,
 )
 from .referrals import (
     add_referral, count_referrals, count_bot_referrals,
     add_referral_goal, get_referral_goals, deactivate_goal,
     set_chat_role, get_chat_role, mark_referral_rewarded,
     get_unrewarded_referral, mark_all_referrals_rewarded,
+    get_primary_referral, set_referral_paid_rank,
 )
 from .ads import (
     create_campaign, get_active_campaigns, get_all_campaigns, get_campaign,
@@ -50,12 +51,13 @@ __all__ = [
     # economy
     "get_wallet", "get_wallet_balance", "add_mana", "spend_mana", "revert_mana",
     "can_reward_message", "mark_message_reward", "get_top_mana", "get_mana_emission",
-    "claim_dungeon",
+    "claim_dungeon", "get_wallet_rank", "set_wallet_rank",
     # referrals
     "add_referral", "count_referrals", "count_bot_referrals",
     "add_referral_goal", "get_referral_goals", "deactivate_goal",
     "set_chat_role", "get_chat_role", "mark_referral_rewarded",
     "get_unrewarded_referral", "mark_all_referrals_rewarded",
+    "get_primary_referral", "set_referral_paid_rank",
     # ads
     "create_campaign", "get_active_campaigns", "get_all_campaigns", "get_campaign",
     "set_campaign_status", "delete_campaign", "mark_campaign_sent", "log_impression",

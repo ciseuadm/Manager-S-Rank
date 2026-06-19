@@ -15,8 +15,12 @@ from database import (
     add_referral, count_referrals, count_bot_referrals,
     get_referral_goals, set_chat_role, add_mana, credit_invite,
     get_unrewarded_referral, mark_all_referrals_rewarded,
+    get_primary_referral, set_referral_paid_rank,
 )
-from utils import get_config, mention_html_raw, format_mana
+from utils import (
+    get_config, mention_html_raw, format_mana,
+    get_rank_label, rank_index,
+)
 
 
 VIP_REACHED_MSG = (
@@ -159,37 +163,60 @@ async def _check_goals(bot: Bot, inviter_id: int, chat_id: int,
                     pass
 
 
-REF_RANKUP_MSG = (
-    "💎 <b>ТВОЙ РЕКРУТ ОКРЕП!</b>\n\n"
-    "Охотник, которого ты привёл в Систему, поднял свой первый ранг.\n"
-    "За доказанную вербовку начислено <b>{reward}</b>.\n\n"
-    "<i>Зови сильных — Система платит за тех, кто остаётся.</i>"
+# Агентские награды: руда вербовщику («агенту») за каждую новую ранговую веху
+# его рекрута. Финансируются нашей маржой — пока рекрут жмёт подписки, мы зарабатываем
+# больше, чем платим агенту. D даёт «доказательство жизни», дальше — за рост.
+AGENT_REWARDS = {
+    "D": 50,
+    "C": 100,
+    "B": 300,
+    "A": 800,
+    "S": 2000,
+    "SS": 4000,
+    "SSS": 8000,
+}
+
+AGENT_REWARD_MSG = (
+    "🕴 <b>ОТЧЁТ АГЕНТА</b>\n\n"
+    "Твой рекрут дорос до ранга <b>{rank}</b>.\n"
+    "Гильдия начисляет агентское вознаграждение: <b>{reward}</b>.\n\n"
+    "<i>Ты — Агент Системы: зови сильных охотников и расти вместе с ними.</i>"
 )
 
 
-async def reward_referrer_on_progress(bot: Bot, invited_id: int) -> None:
+async def reward_agent_on_rank(bot: Bot, invited_id: int, new_rank: str) -> None:
     """
-    Платит пригласившему разовую награду, когда приглашённый впервые повышает
-    ранг (доказывает активность). Вызывается из обработчика повышения ранга.
-    Платим один раз на новичка, даже если у него несколько источников-приглашений.
+    Платит агенту-вербовщику за каждую НОВУЮ ранговую веху его рекрута.
+    Суммирует награды за все вехи между уже оплаченным рангом и текущим
+    (на случай «прыжка» через ранг). Платит ровно одному агенту на рекрута.
     """
-    cfg = get_config()
-    reward = cfg.mana_referral_rankup
-    if reward <= 0:
+    new_idx = rank_index(new_rank)
+    if new_idx <= 0:  # E или неизвестный ранг — не платим
         return
-    ref = await get_unrewarded_referral(invited_id)
+    ref = await get_primary_referral(invited_id)
     if not ref:
         return
     inviter_id = ref["inviter_id"]
-    # Помечаем сразу, чтобы гонка повышений не заплатила дважды.
-    await mark_all_referrals_rewarded(invited_id)
     if inviter_id == invited_id:
         return
-    await add_mana(inviter_id, reward, "ref_rankup", ref_id=str(invited_id))
+    paid_idx = rank_index(ref.get("paid_rank") or "E")
+    if paid_idx < 0:
+        paid_idx = 0
+    if new_idx <= paid_idx:
+        return  # за эту веху уже заплачено
+
+    amount = sum(
+        reward for r, reward in AGENT_REWARDS.items()
+        if paid_idx < rank_index(r) <= new_idx
+    )
+    await set_referral_paid_rank(ref["id"], new_rank)
+    if amount <= 0:
+        return
+    await add_mana(inviter_id, amount, "agent_reward", ref_id=str(invited_id))
     try:
         await bot.send_message(
             inviter_id,
-            REF_RANKUP_MSG.format(reward=format_mana(reward)),
+            AGENT_REWARD_MSG.format(rank=get_rank_label(new_rank), reward=format_mana(amount)),
             parse_mode="HTML",
         )
     except Exception:

@@ -13,22 +13,21 @@ from aiogram.filters.chat_member_updated import ChatMemberUpdatedFilter, JOIN_TR
 from database import (
     get_or_create_user, get_chat_settings, set_chat_title,
     get_top_users, get_chat_stats, claim_daily,
-    get_top_inviters, update_user_rank,
+    get_top_inviters, get_wallet_rank,
 )
 from keyboards import invite_keyboard, welcome_keyboard
 from services import (
     award_daily, register_bot_referral, register_chat_referral,
-    claim_dungeon_reward, balance_of, reward_referrer_on_progress,
+    claim_dungeon_reward, balance_of, rank_card,
 )
 from utils import (
-    calculate_rank, get_rank_label, get_rank_title,
-    messages_to_next_rank, rank_progress_bar,
+    get_rank_label,
     mention_html, escape_html, safe_format,
     WELCOME_DEFAULT, HELP_MSG, START_MSG, BOTFATHER_COMMANDS,
     INVITE_MSG, DAILY_MSG, DAILY_DONE_MSG, RULES_DEFAULT, INVITE_JOIN_MSG,
     DUNGEON_AD_HINT, DUNGEON_CLAIMED_MSG, DUNGEON_TOPUP_MSG, DUNGEON_DONE_MSG,
     DUNGEON_MILESTONE_MSG, DUNGEON_PRIVATE_MSG,
-    RANK_UP_MSG, EARN_MSG, format_mana, get_config,
+    EARN_MSG, format_mana, get_config,
 )
 from utils.media import answer_with_banner
 
@@ -126,22 +125,24 @@ async def cmd_rank(message: Message) -> None:
 
     db_user = await get_or_create_user(user.id, message.chat.id, full_name=user.full_name)
     msgs = db_user.get("messages", 0)
-    rank = calculate_rank(msgs)
-    label = get_rank_label(rank)
-    title = get_rank_title(rank)
-    progress = rank_progress_bar(msgs, rank)
-    to_next = messages_to_next_rank(msgs, rank)
+    card = await rank_card(user.id)
+    to_next = card["to_next"]
 
-    next_line = f"\n🔜 До следующего ранга: <b>{to_next}</b> сообщений" if to_next else "\n👑 <b>МАКСИМАЛЬНЫЙ РАНГ ДОСТИГНУТ!</b>"
+    next_line = (
+        f"\n🔜 До следующего ранга: <b>{to_next}</b> заданий"
+        if to_next is not None else "\n👑 <b>МАКСИМАЛЬНЫЙ РАНГ ДОСТИГНУТ!</b>"
+    )
 
     text = (
         f"⚡ <b>КАРТОЧКА ОХОТНИКА</b>\n\n"
         f"👤 {mention_html(user)}\n"
-        f"🏆 Ранг: <b>{label}</b>\n"
-        f"🎖 Звание: <i>{title}</i>\n"
+        f"🏆 Ранг: <b>{card['label']}</b>\n"
+        f"🎖 Звание: <i>{card['title']}</i>\n"
+        f"📌 Заданий выполнено: <b>{card['score']}</b>\n"
         f"💬 Сообщений: <b>{msgs}</b>\n"
         f"⚠️ Предупреждений: <b>{db_user.get('warns', 0)}</b>\n\n"
-        f"📊 Прогресс: {progress}{next_line}"
+        f"📊 Прогресс ранга: {card['progress']}{next_line}\n"
+        f"<i>Ранг растёт за выполненные задания (/tasks), не за флуд.</i>"
     )
     await message.answer(text, parse_mode="HTML")
 
@@ -159,7 +160,8 @@ async def cmd_top(message: Message) -> None:
     lines = ["⚡ <b>ТОП ОХОТНИКОВ ЧАТА</b>\n"]
     for i, u in enumerate(users):
         name = escape_html(u.get("full_name") or u.get("username") or str(u["user_id"]))
-        label = get_rank_label(u.get("rank", "E"))
+        # Ранг глобальный (по заданиям), активность чата — по сообщениям.
+        label = get_rank_label(await get_wallet_rank(u["user_id"]))
         lines.append(
             f"{MEDALS[i]} {i+1}. <b>{name}</b> {label} — {u['messages']} сообщений"
         )
@@ -183,8 +185,7 @@ async def cmd_info(message: Message, bot) -> None:
     except Exception:
         status = "unknown"
 
-    rank = calculate_rank(db_user.get("messages", 0))
-    label = get_rank_label(rank)
+    label = get_rank_label(await get_wallet_rank(user.id))
 
     status_icons = {
         "creator": "👑 Создатель",
@@ -261,8 +262,7 @@ async def cmd_daily(message: Message) -> None:
         )
         return
 
-    await _sync_rank(message, user.id, message.chat.id, total)
-    rank = calculate_rank(total)
+    card = await rank_card(user.id)
     mana_line = ""
     try:
         mana_bonus = await award_daily(user.id, message.chat.id)
@@ -275,7 +275,7 @@ async def cmd_daily(message: Message) -> None:
             mention=mention_html(user),
             bonus=DAILY_BONUS,
             total=total,
-            rank_label=get_rank_label(rank),
+            rank_label=card["label"],
         ) + mana_line,
         parse_mode="HTML",
     )
@@ -429,8 +429,8 @@ async def cmd_invite(message: Message, bot: Bot) -> None:
     db_user = await get_or_create_user(
         user.id, chat.id, username=user.username or "", full_name=user.full_name,
     )
-    rank = calculate_rank(db_user.get("messages", 0))
-    text = INVITE_MSG.format(chat=escape_html(chat.title or "наш чат"), rank=get_rank_label(rank))
+    rank_label = get_rank_label(await get_wallet_rank(user.id))
+    text = INVITE_MSG.format(chat=escape_html(chat.title or "наш чат"), rank=rank_label)
     share_text = (
         f"⚔️ Заходи в «{chat.title or 'наш чат'}» — система рангов Solo Leveling, "
         f"топы охотников и ежедневные бонусы!"
@@ -460,32 +460,6 @@ async def cmd_invites(message: Message) -> None:
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────────
-
-async def _sync_rank(message: Message, user_id: int, chat_id: int, messages: int) -> None:
-    """Update stored rank after a bonus and announce a rank-up if it happened."""
-    db_user = await get_or_create_user(user_id, chat_id)
-    old_rank = db_user.get("rank", "E")
-    new_rank = calculate_rank(messages)
-    if new_rank != old_rank:
-        await update_user_rank(user_id, chat_id, new_rank)
-        if old_rank == "E":
-            try:
-                await reward_referrer_on_progress(message.bot, user_id)
-            except Exception:
-                pass
-        try:
-            await message.answer(
-                RANK_UP_MSG.format(
-                    name=mention_html(message.from_user),
-                    old_label=get_rank_label(old_rank),
-                    new_label=get_rank_label(new_rank),
-                    title=get_rank_title(new_rank),
-                ),
-                parse_mode="HTML",
-            )
-        except Exception:
-            pass
-
 
 # ── Авто-чистка сервисных сообщений «X присоединился / вышел» ────────────────────
 
@@ -544,8 +518,7 @@ async def on_new_member(event: ChatMemberUpdated) -> None:
         full_name=user.full_name,
     )
     settings = await get_chat_settings(event.chat.id)
-    rank = calculate_rank(db_user.get("messages", 0))
-    rank_label = get_rank_label(rank)
+    rank_label = get_rank_label(await get_wallet_rank(user.id))
 
     welcome = settings.get("welcome_msg") or WELCOME_DEFAULT
     text = safe_format(
