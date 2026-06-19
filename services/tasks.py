@@ -18,11 +18,13 @@ from database import (
     get_task, get_active_tasks, get_completion, get_completed_task_ids,
     record_completion, add_mana, spend_mana, get_wallet_balance,
     get_wallet, set_task_active, task_completions_count,
-    create_payout_request, count_user_credited_subs, add_xp,
+    create_payout_request, count_user_credited_subs, add_xp, get_xp,
     award_achievement_capped, count_achievement,
-    get_user_channel_task_completions,
+    get_user_channel_task_completions, count_user_completions_today,
 )
-from utils import get_config
+from utils import (
+    get_config, calculate_rank, rank_perks, rank_reward_multiplier,
+)
 
 
 # ── Экономика ────────────────────────────────────────────────────────────────
@@ -121,15 +123,56 @@ def _is_subscribed(member) -> bool:
     return False
 
 
-# ── Список заданий пользователя ──────────────────────────────────────────────
+# ── Дневной лимит и индивидуальный подбор заданий ────────────────────────────
+
+def effective_daily_limit(rank: str) -> int:
+    """Дневной лимит заданий с учётом привилегий ранга (S/SS/SSS дают больше)."""
+    return get_config().tasks_daily_limit + rank_perks(rank)["daily_task_bonus"]
+
 
 async def list_available_tasks(user_id: int) -> list[dict]:
-    """Активные задания с пометкой, выполнено ли пользователем."""
+    """Активные задания с пометкой, выполнено ли пользователем (без лимита).
+    Оставлено для обратной совместимости; UI использует daily_tasks_view."""
     tasks = await get_active_tasks()
     done = await get_completed_task_ids(user_id)
     for t in tasks:
         t["done"] = t["id"] in done
     return tasks
+
+
+async def daily_tasks_view(user_id: int) -> dict:
+    """
+    Индивидуальный подбор заданий на сегодня — без повторов и с дневным лимитом.
+
+    • «Без повторов» — из пула исключены уже выполненные охотником задания
+      (не предлагаем канал, на который он уже подписан и получил награду).
+    • «Дневной лимит» — base (config.tasks_daily_limit) + бонус ранга. Показываем
+      ровно столько новых заданий, сколько охотник ещё может выполнить сегодня.
+
+    Возвращает dict: rank, limit, done_today, remaining, tasks, pool_size.
+    """
+    xp = await get_xp(user_id)
+    rank = calculate_rank(xp)
+    limit = effective_daily_limit(rank)
+    done_today = await count_user_completions_today(user_id)
+    remaining = max(0, limit - done_today)
+
+    active = await get_active_tasks()
+    done_ids = await get_completed_task_ids(user_id)
+    pool = [t for t in active if t["id"] not in done_ids]  # без повторов
+    # Стабильный индивидуальный порядок в течение суток: новые спонсоры выше.
+    pool.sort(key=lambda t: t["id"], reverse=True)
+    todays = pool[:remaining]
+    for t in todays:
+        t["done"] = False
+    return {
+        "rank": rank,
+        "limit": limit,
+        "done_today": done_today,
+        "remaining": remaining,
+        "tasks": todays,
+        "pool_size": len(pool),
+    }
 
 
 # ── Проверка и начисление за подписку ────────────────────────────────────────
@@ -140,7 +183,11 @@ async def check_and_credit_subscription(
     """
     Проверяет подписку на канал задания и начисляет руду один раз.
     Возвращает (code, reward), где code:
-      'credited' | 'already' | 'not_subscribed' | 'misconfig' | 'inactive' | 'locked'
+      'credited' | 'already' | 'not_subscribed' | 'misconfig' | 'inactive'
+      | 'locked' | 'daily_limit'
+
+    'daily_limit' — на сегодня охотник уже выполнил максимум заданий (база +
+    бонус ранга). Новые задания засчитаются завтра; награда/опыт не трогаются.
 
     'locked' — мягкая блокировка: пользователь отписался от канала прошлого
     спонсора, на котором ещё обязан быть подписан. Штрафов нет — нужно просто
@@ -162,6 +209,18 @@ async def check_and_credit_subscription(
     if blockers:
         return "locked", 0
 
+    # Ранг считаем один раз: нужен и для дневного лимита, и для бонуса награды.
+    xp = await get_xp(user_id)
+    rank = calculate_rank(xp)
+
+    # Дневной лимит: новое задание (не восстановление после отписки) сверх лимита
+    # не засчитываем — защита экономики от «фарма» подписок за день.
+    is_new = not (existing and existing.get("status") == "reverted")
+    if is_new:
+        done_today = await count_user_completions_today(user_id)
+        if done_today >= effective_daily_limit(rank):
+            return "daily_limit", 0
+
     channel_id = task.get("channel_id")
     try:
         member = await bot.get_chat_member(channel_id, user_id)
@@ -172,10 +231,11 @@ async def check_and_credit_subscription(
     if not _is_subscribed(member):
         return "not_subscribed", task.get("reward", 0)
 
-    # Награда растёт со стриком (лесенка): чем больше сохранённых подписок — тем выше.
+    # Награда растёт со стриком (лесенка) и с привилегией ранга (S/SS/SSS):
+    # reward = base × множитель_стрика × множитель_ранга.
     base = task.get("reward", 0)
     streak = await user_streak(user_id)
-    reward = int(round(base * streak_multiplier(streak)))
+    reward = int(round(base * streak_multiplier(streak) * rank_reward_multiplier(rank)))
 
     # record_completion имеет UNIQUE(task_id,user_id) — защита от гонки/дублей.
     if existing and existing.get("status") == "reverted":

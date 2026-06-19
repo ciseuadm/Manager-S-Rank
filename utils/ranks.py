@@ -91,3 +91,47 @@ def rank_progress_bar(xp: int, current_rank: str) -> str:
     bar = "▓" * filled + "░" * (10 - filled)
     pct = int(progress * 100)
     return f"{bar} {pct}%"
+
+
+# ── Привилегии высоких рангов (S / SS / SSS) ──────────────────────────────────
+# Награда за статус: высокоранговые охотники зарабатывают больше и платят меньше
+# комиссии. Применяется к экономике заданий (/tasks) и переводам (/transfer).
+#   • daily_task_bonus  — насколько выше дневной лимит заданий, чем базовый;
+#   • task_reward_pct   — надбавка к награде за задание (стакается со стриком);
+#   • transfer_fee_off  — на сколько % снижается комиссия казны при /transfer.
+RANK_PERKS: dict[str, dict[str, int]] = {
+    "S":   {"daily_task_bonus": 1, "task_reward_pct": 10, "transfer_fee_off": 2},
+    "SS":  {"daily_task_bonus": 2, "task_reward_pct": 20, "transfer_fee_off": 3},
+    "SSS": {"daily_task_bonus": 3, "task_reward_pct": 35, "transfer_fee_off": 5},
+}
+
+_NO_PERKS = {"daily_task_bonus": 0, "task_reward_pct": 0, "transfer_fee_off": 0}
+
+
+def rank_perks(rank_id: str) -> dict[str, int]:
+    """Привилегии ранга (нули для E…A)."""
+    return RANK_PERKS.get(rank_id, _NO_PERKS)
+
+
+def has_privileges(rank_id: str) -> bool:
+    return rank_id in RANK_PERKS
+
+
+def rank_reward_multiplier(rank_id: str) -> float:
+    """Множитель награды за задание от ранга (1.0 для E…A)."""
+    return 1 + rank_perks(rank_id)["task_reward_pct"] / 100
+
+
+def perks_lines(rank_id: str) -> list[str]:
+    """Список привилегий ранга для показа пользователю (пусто, если их нет)."""
+    p = rank_perks(rank_id)
+    if not has_privileges(rank_id):
+        return []
+    lines: list[str] = []
+    if p["task_reward_pct"]:
+        lines.append(f"⛏ +{p['task_reward_pct']}% к награде за задания")
+    if p["daily_task_bonus"]:
+        lines.append(f"📅 +{p['daily_task_bonus']} к дневному лимиту заданий")
+    if p["transfer_fee_off"]:
+        lines.append(f"💸 −{p['transfer_fee_off']}% к комиссии перевода руды")
+    return lines

@@ -38,7 +38,7 @@ from .payments import add_payment, get_payment_by_charge, payments_total
 from .tasks import (
     create_task, get_task, get_active_tasks, list_tasks, set_task_active,
     task_completions_count, get_completion, get_completed_task_ids,
-    count_user_credited_subs,
+    count_user_credited_subs, count_user_completions_today,
     record_completion, get_credited_channel_completions, mark_completion_reverted,
     mark_completion_released, end_task_sponsorship,
     get_user_channel_task_completions,
@@ -82,7 +82,7 @@ __all__ = [
     # tasks
     "create_task", "get_task", "get_active_tasks", "list_tasks", "set_task_active",
     "task_completions_count", "get_completion", "get_completed_task_ids",
-    "count_user_credited_subs",
+    "count_user_credited_subs", "count_user_completions_today",
     "record_completion", "get_credited_channel_completions", "mark_completion_reverted",
     "mark_completion_released", "end_task_sponsorship",
     "get_user_channel_task_completions",

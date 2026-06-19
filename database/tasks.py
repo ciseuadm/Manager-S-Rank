@@ -118,6 +118,21 @@ async def record_completion(
         return False
 
 
+async def count_user_completions_today(user_id: int) -> int:
+    """Сколько заданий охотник засчитал сегодня (UTC) — для дневного лимита.
+    Считаем по дате создания выполнения: повторный зачёт после возврата на
+    канал (reverted→credited) не создаёт новую строку и в лимит не попадает."""
+    db = await get_db()
+    async with db.execute(
+        """SELECT COUNT(*) AS c FROM task_completions
+           WHERE user_id = ? AND status = 'credited'
+             AND date(created_at) = date('now')""",
+        (user_id,),
+    ) as cur:
+        row = await cur.fetchone()
+    return row["c"] if row else 0
+
+
 async def count_user_credited_subs(user_id: int) -> int:
     """Сколько подписок-заданий у пользователя засчитано прямо сейчас (стрик)."""
     db = await get_db()

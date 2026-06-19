@@ -2,6 +2,7 @@ from .ranks import (
     calculate_rank, get_rank_info, get_rank_label,
     get_rank_title, get_next_rank, messages_to_next_rank, rank_progress_bar,
     score_to_next_rank, rank_index, RANKS, XP_PER_TASK,
+    RANK_PERKS, rank_perks, has_privileges, rank_reward_multiplier, perks_lines,
 )
 from .texts import (
     VIOLATION_REASONS, RANK_UP_MSG, WARN_MSG, MUTE_AUTO_MSG, BAN_AUTO_MSG,
@@ -28,6 +29,7 @@ __all__ = [
     "calculate_rank", "get_rank_info", "get_rank_label",
     "get_rank_title", "get_next_rank", "messages_to_next_rank", "rank_progress_bar",
     "score_to_next_rank", "rank_index", "RANKS", "XP_PER_TASK",
+    "RANK_PERKS", "rank_perks", "has_privileges", "rank_reward_multiplier", "perks_lines",
     "VIOLATION_REASONS", "RANK_UP_MSG", "WARN_MSG", "MUTE_AUTO_MSG", "BAN_AUTO_MSG",
     "DELETE_NOTIFY", "FLOOD_WARN", "WELCOME_DEFAULT", "HELP_MSG", "START_MSG",
     "BOTFATHER_COMMANDS", "SETTINGS_MSG", "INVITE_MSG", "DAILY_MSG",

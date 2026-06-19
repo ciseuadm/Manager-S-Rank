@@ -12,6 +12,7 @@ from .ranks import sync_rank, sync_task_rank, rank_card, get_rank_score
 from .ads_scheduler import send_due_ads, send_campaign_now, send_campaign
 from .tasks import (
     reward_for_revenue, mana_to_usd_cents, mana_to_rub, list_available_tasks,
+    daily_tasks_view, effective_daily_limit,
     check_and_credit_subscription,
     request_payout, refund_payout,
     user_streak, streak_multiplier, check_milestones,
@@ -32,6 +33,7 @@ __all__ = [
     "sync_rank", "sync_task_rank", "rank_card", "get_rank_score",
     "send_due_ads", "send_campaign_now", "send_campaign",
     "reward_for_revenue", "mana_to_usd_cents", "mana_to_rub", "list_available_tasks",
+    "daily_tasks_view", "effective_daily_limit",
     "check_and_credit_subscription",
     "request_payout", "refund_payout",
     "user_streak", "streak_multiplier", "check_milestones",

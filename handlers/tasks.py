@@ -23,15 +23,20 @@ from database import (
     list_tasks, set_task_active, create_task,
     task_completions_count, list_payout_requests,
     get_payout_request, set_payout_status, get_user_achievements,
+    get_xp,
 )
 from services import (
-    list_available_tasks, check_and_credit_subscription, request_payout,
+    daily_tasks_view, check_and_credit_subscription, request_payout,
     refund_payout, mana_to_usd_cents, mana_to_rub, balance_of,
     user_streak, streak_multiplier, find_unsubscribed_channels, resubscribe_keyboard,
 )
 from services.gifts import get_catalog, send_telegram_gift, offer_from_product
 from utils.redeem_ui import redeem_intro, redeem_keyboard
-from utils import is_owner, get_config, format_mana, mention_html_raw
+from utils import (
+    is_owner, get_config, format_mana, mention_html_raw,
+    get_rank_label, get_rank_title, perks_lines, has_privileges, RANK_PERKS,
+    rank_perks, calculate_rank,
+)
 from utils.media import answer_with_banner
 
 router = Router()
@@ -42,21 +47,15 @@ router = Router()
 def _tasks_keyboard(tasks: list[dict]) -> InlineKeyboardBuilder:
     b = InlineKeyboardBuilder()
     for t in tasks:
-        if t.get("done"):
-            b.row(InlineKeyboardButton(
-                text=f"✅ {(t['title'] or 'Задание')[:32]} (+{t['reward']})",
-                callback_data=f"task:done:{t['id']}",
-            ))
-        else:
-            url = t.get("url") or (
-                f"https://t.me/{t['channel_username']}" if t.get("channel_username") else None
-            )
-            if url:
-                b.row(InlineKeyboardButton(text=f"➡️ {(t['title'] or 'Канал')[:32]}", url=url))
-            b.row(InlineKeyboardButton(
-                text=f"🔍 Проверить и забрать +{t['reward']} руды",
-                callback_data=f"task:check:{t['id']}",
-            ))
+        url = t.get("url") or (
+            f"https://t.me/{t['channel_username']}" if t.get("channel_username") else None
+        )
+        if url:
+            b.row(InlineKeyboardButton(text=f"➡️ {(t['title'] or 'Канал')[:32]}", url=url))
+        b.row(InlineKeyboardButton(
+            text=f"🔍 Проверить и забрать +{t['reward']} руды",
+            callback_data=f"task:check:{t['id']}",
+        ))
     b.row(InlineKeyboardButton(text="🔄 Обновить", callback_data="task:list"))
     return b
 
@@ -72,20 +71,12 @@ def _redeem_intro(balance: int) -> str:
 # ── /tasks ───────────────────────────────────────────────────────────────────
 
 async def _render_tasks(user_id: int) -> tuple[str, InlineKeyboardBuilder]:
-    tasks = await list_available_tasks(user_id)
+    view = await daily_tasks_view(user_id)
     balance = await balance_of(user_id)
-    if not tasks:
-        text = (
-            "📋 <b>ЗАДАНИЯ ГИЛЬДИИ</b>\n\n"
-            "Сейчас активных заданий нет. Загляни позже — Система регулярно "
-            "присылает новые подземелья для добычи Мана-руды.\n\n"
-            f"🔹 Твой баланс: <b>{format_mana(balance)}</b>"
-        )
-        b = InlineKeyboardBuilder()
-        b.row(InlineKeyboardButton(text="🔄 Обновить", callback_data="task:list"))
-        return text, b
+    tasks = view["tasks"]
+    rank = view["rank"]
+    done_today, limit, remaining = view["done_today"], view["limit"], view["remaining"]
 
-    done = sum(1 for t in tasks if t.get("done"))
     streak = await user_streak(user_id)
     mult = streak_multiplier(streak)
     mult_line = (
@@ -93,17 +84,61 @@ async def _render_tasks(user_id: int) -> tuple[str, InlineKeyboardBuilder]:
         if streak > 0 else
         "🔥 Каждая сохранённая подписка повышает множитель будущих наград!\n"
     )
+
+    # Привилегия ранга: надбавка к награде и к дневному лимиту (S/SS/SSS).
+    perk = rank_perks(rank)
+    perk_line = ""
+    if has_privileges(rank):
+        extra = []
+        if perk["task_reward_pct"]:
+            extra.append(f"+{perk['task_reward_pct']}% к награде")
+        if perk["daily_task_bonus"]:
+            extra.append(f"+{perk['daily_task_bonus']} к лимиту")
+        perk_line = f"👑 Привилегия {get_rank_label(rank)}: <b>{', '.join(extra)}</b>\n"
+
+    limit_line = f"📅 Заданий сегодня: <b>{done_today}/{limit}</b>\n"
+
+    # Лимит исчерпан — на сегодня всё.
+    if remaining <= 0:
+        text = (
+            "📋 <b>ЗАДАНИЯ ГИЛЬДИИ</b>\n\n"
+            f"✅ Дневной лимит выполнен: <b>{done_today}/{limit}</b> заданий.\n"
+            f"🔹 Твой баланс: <b>{format_mana(balance)}</b>\n"
+            f"{perk_line}"
+            "\n⏳ Новые задания откроются завтра. Подними ранг — и лимит станет больше "
+            "(привилегии S/SS/SSS): /privileges\n\n"
+            "Обменять руду на подарок: /redeem · Достижения: /achievements"
+        )
+        b = InlineKeyboardBuilder()
+        b.row(InlineKeyboardButton(text="🔄 Обновить", callback_data="task:list"))
+        return text, b
+
+    # Лимит ещё есть, но активных невыполненных заданий нет.
+    if not tasks:
+        text = (
+            "📋 <b>ЗАДАНИЯ ГИЛЬДИИ</b>\n\n"
+            "Сейчас новых заданий для тебя нет — ты выполнил всё доступное. "
+            "Система регулярно присылает новые подземелья, загляни позже.\n\n"
+            f"📅 Сегодня можно ещё: <b>{remaining}</b> из <b>{limit}</b>\n"
+            f"🔹 Твой баланс: <b>{format_mana(balance)}</b>\n"
+            f"{perk_line}"
+        )
+        b = InlineKeyboardBuilder()
+        b.row(InlineKeyboardButton(text="🔄 Обновить", callback_data="task:list"))
+        return text, b
+
     text = (
         "📋 <b>ЗАДАНИЯ ГИЛЬДИИ</b>\n"
-        "<i>Выполняй задания — добывай руду, которую можно обменять на подарки.</i>\n\n"
-        f"✅ Выполнено: <b>{done}/{len(tasks)}</b>\n"
+        "<i>Твой личный подбор на сегодня — без повторов. Выполняй и добывай руду.</i>\n\n"
+        f"{limit_line}"
         f"🔹 Твой баланс: <b>{format_mana(balance)}</b>\n"
-        f"{mult_line}\n"
+        f"{mult_line}"
+        f"{perk_line}\n"
         "1. Подпишись на канал по кнопке.\n"
-        "2. Нажми «Проверить» — Система начислит руду (с учётом множителя).\n"
+        "2. Нажми «Проверить» — Система начислит руду (с учётом множителей).\n"
         "3. <b>Не отписывайся</b> от каналов — иначе руда отзывается, стрик сбрасывается.\n"
         "   При отписке придёт сообщение с кнопками «вернуться на канал».\n\n"
-        "Обменять руду на подарок: /redeem · Достижения: /achievements"
+        "Обменять руду на подарок: /redeem · Привилегии: /privileges"
     )
     return text, _tasks_keyboard(tasks)
 
@@ -164,6 +199,19 @@ async def cb_task_check(call: CallbackQuery, bot: Bot) -> None:
                 )
             except Exception:
                 pass
+    elif code == "daily_limit":
+        await call.answer(
+            "📅 На сегодня лимит заданий исчерпан. Новые откроются завтра. "
+            "Подними ранг (S/SS/SSS) — лимит станет больше: /privileges",
+            show_alert=True,
+        )
+        text, kb = await _render_tasks(call.from_user.id)
+        try:
+            await call.message.edit_text(text, parse_mode="HTML",
+                                         reply_markup=kb.as_markup(),
+                                         disable_web_page_preview=True)
+        except Exception:
+            pass
     elif code == "not_subscribed":
         await call.answer(
             "❌ Подписка не найдена. Подпишись на канал задания и нажми «Проверить» снова.",
@@ -309,6 +357,47 @@ async def cmd_achievements(message: Message) -> None:
     lines = ["🏅 <b>ТВОИ ДОСТИЖЕНИЯ</b>\n"]
     for c in codes:
         lines.append(f"• {ACHIEVEMENT_NAMES.get(c, c)}")
+    await message.answer("\n".join(lines), parse_mode="HTML")
+
+
+# ── /privileges — привилегии высоких рангов ──────────────────────────────────
+
+@router.message(Command("privileges", "perks", "privilege"))
+async def cmd_privileges(message: Message) -> None:
+    if not message.from_user:
+        return
+    cfg = get_config()
+    my_rank = calculate_rank(await get_xp(message.from_user.id))
+
+    lines = [
+        "👑 <b>ПРИВИЛЕГИИ ОХОТНИКОВ</b>",
+        "<i>Чем выше ранг — тем больше зарабатываешь и меньше платишь Системе.</i>\n",
+    ]
+    # Таблица привилегий по рангам.
+    for rank in ("S", "SS", "SSS"):
+        p = rank_perks(rank)
+        mark = " ← ты здесь" if rank == my_rank else ""
+        lines.append(
+            f"{get_rank_label(rank)}{mark}\n"
+            f"   ⛏ +{p['task_reward_pct']}% к награде за задания\n"
+            f"   📅 +{p['daily_task_bonus']} к дневному лимиту заданий "
+            f"(итого {cfg.tasks_daily_limit + p['daily_task_bonus']}/день)\n"
+            f"   💸 −{p['transfer_fee_off']}% к комиссии перевода руды"
+        )
+
+    my_perks = perks_lines(my_rank)
+    if my_perks:
+        lines.append(
+            f"\n✅ <b>Твои привилегии ({get_rank_label(my_rank)}):</b>\n"
+            + "\n".join(f"   {x}" for x in my_perks)
+        )
+    else:
+        lines.append(
+            f"\n🔓 У тебя ранг <b>{get_rank_label(my_rank)}</b> — привилегии открываются "
+            f"с ранга <b>S</b>. Базовый дневной лимит: <b>{cfg.tasks_daily_limit}</b> задания.\n"
+            "Качай ранг заданиями (/tasks) и подземельем (/dungeon)!"
+        )
+
     await message.answer("\n".join(lines), parse_mode="HTML")
 
 

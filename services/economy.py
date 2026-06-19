@@ -11,9 +11,9 @@ from aiogram import Bot
 from database import (
     add_mana, spend_mana, get_wallet, get_wallet_balance,
     can_reward_message, mark_message_reward, claim_dungeon,
-    award_achievement, add_xp,
+    award_achievement, add_xp, get_xp,
 )
-from utils import get_config
+from utils import get_config, calculate_rank, rank_perks
 
 # Код ачивки за 30-дневный стрик подземелья (уникальный тег для профиля).
 STREAK_30_ACHIEVEMENT = "dungeon_streak_30"
@@ -134,7 +134,10 @@ async def transfer_mana(
         return False, 0, "Сумма должна быть больше нуля."
 
     cfg = get_config()
-    fee = amount * cfg.mana_transfer_fee_pct // 100
+    # Привилегия ранга: высокоранговые охотники платят меньше комиссии казны.
+    rank = calculate_rank(await get_xp(from_id))
+    fee_pct = max(0, cfg.mana_transfer_fee_pct - rank_perks(rank)["transfer_fee_off"])
+    fee = amount * fee_pct // 100
     total = amount + fee
 
     new_bal = await spend_mana(from_id, total, "transfer_out", ref_id=str(to_id), chat_id=chat_id)

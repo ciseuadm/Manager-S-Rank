@@ -21,7 +21,7 @@ from services import (
     claim_dungeon_reward, balance_of, rank_card,
 )
 from utils import (
-    get_rank_label,
+    get_rank_label, perks_lines, has_privileges,
     mention_html, escape_html, safe_format,
     WELCOME_DEFAULT, HELP_MSG, START_MSG, BOTFATHER_COMMANDS,
     INVITE_MSG, DAILY_MSG, DAILY_DONE_MSG, RULES_DEFAULT, INVITE_JOIN_MSG,
@@ -132,6 +132,13 @@ async def cmd_rank(message: Message) -> None:
         if card["xp_to_next"] is not None else "\n👑 <b>МАКСИМАЛЬНЫЙ РАНГ ДОСТИГНУТ!</b>"
     )
 
+    # Привилегии высоких рангов (S/SS/SSS) — показываем прямо в карточке.
+    perks = perks_lines(card["rank"])
+    perks_block = (
+        "\n\n👑 <b>Привилегии ранга:</b>\n" + "\n".join(f"• {p}" for p in perks)
+        if perks else ""
+    )
+
     text = (
         f"⚡ <b>КАРТОЧКА ОХОТНИКА</b>\n\n"
         f"👤 {mention_html(user)}\n"
@@ -140,9 +147,10 @@ async def cmd_rank(message: Message) -> None:
         f"⭐ Опыт: <b>{card['xp']}</b>\n"
         f"💬 Сообщений: <b>{msgs}</b>\n"
         f"⚠️ Предупреждений: <b>{db_user.get('warns', 0)}</b>\n\n"
-        f"📊 Прогресс ранга: {card['progress']}{next_line}\n"
+        f"📊 Прогресс ранга: {card['progress']}{next_line}"
+        f"{perks_block}\n"
         f"<i>Опыт даётся за задания (/tasks) — 100 за подписку — и за подземелье "
-        f"(/dungeon, +руда = +опыт). Трата руды на подарки опыт не уменьшает.</i>"
+        f"(/dungeon, +руда = +опыт). Привилегии и лимиты: /privileges</i>"
     )
     await message.answer(text, parse_mode="HTML")
 
