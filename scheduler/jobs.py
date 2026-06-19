@@ -9,7 +9,6 @@ from aiogram import Bot
 from loguru import logger
 
 from services.ads_scheduler import send_due_ads
-from services.tasks import recheck_subscriptions
 from services.backup import backup_and_ship
 
 
@@ -21,12 +20,6 @@ def setup_scheduler(bot: Bot, cfg) -> AsyncIOScheduler:
             await send_due_ads(bot)
         except Exception as e:
             logger.warning(f"[SCHED] daily ads error: {e}")
-
-    async def _recheck_tasks() -> None:
-        try:
-            await recheck_subscriptions(bot)
-        except Exception as e:
-            logger.warning(f"[SCHED] tasks recheck error: {e}")
 
     async def _daily_backup() -> None:
         try:
@@ -52,18 +45,12 @@ def setup_scheduler(bot: Bot, cfg) -> AsyncIOScheduler:
         id="daily_ads", replace_existing=True,
     )
     scheduler.add_job(
-        _recheck_tasks, "cron",
-        hour=cfg.tasks_recheck_hour, minute=0,
-        id="tasks_recheck", replace_existing=True,
-    )
-    scheduler.add_job(
         _daily_backup, "cron",
         hour=cfg.backup_hour, minute=30,
         id="daily_backup", replace_existing=True,
     )
     logger.info(
         f"Scheduler ready: ads at {cfg.ads_send_hour:02d}:00 UTC, "
-        f"tasks recheck at {cfg.tasks_recheck_hour:02d}:00 UTC, "
         f"backup at {cfg.backup_hour:02d}:30 UTC (keep {cfg.backup_keep})"
     )
     return scheduler

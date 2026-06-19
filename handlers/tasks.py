@@ -145,23 +145,30 @@ async def cb_task_check(call: CallbackQuery, bot: Bot) -> None:
         await call.answer(f"✅ +{reward} руды зачислено!", show_alert=True)
     elif code == "already":
         await call.answer("Награда за это задание уже получена.", show_alert=True)
-    elif code == "not_subscribed":
-        missing = await find_unsubscribed_channels(bot, call.from_user.id)
+    elif code == "locked":
+        # Мягкая блокировка: вернись на канал прошлого спонсора (без штрафов).
+        missing = await find_unsubscribed_channels(bot, call.from_user.id, exclude_task_id=task_id)
         await call.answer(
-            "❌ Подписка не найдена. Подпишись и нажми «Проверить» снова.",
+            "⏳ Сначала вернись на канал прошлого задания — кнопки ниже.",
             show_alert=True,
         )
         if missing:
             try:
                 await call.message.answer(
-                    "📌 <b>Нужно вернуться на каналы</b>\n\n"
-                    "Система видит отписку. Подпишись по кнопкам ниже, "
-                    "затем снова нажми «Проверить» в /tasks.",
+                    "📌 <b>Вернись на канал, чтобы продолжить</b>\n\n"
+                    "Чтобы получать новые задания, нужно оставаться подписанным на "
+                    "каналы прошлых спонсоров. Подпишись обратно по кнопкам ниже — "
+                    "и снова жми «Проверить». Никаких штрафов: твою руду и опыт мы не трогаем.",
                     parse_mode="HTML",
                     reply_markup=resubscribe_keyboard(missing),
                 )
             except Exception:
                 pass
+    elif code == "not_subscribed":
+        await call.answer(
+            "❌ Подписка не найдена. Подпишись на канал задания и нажми «Проверить» снова.",
+            show_alert=True,
+        )
     elif code == "inactive":
         await call.answer("Это задание больше не активно.", show_alert=True)
     else:  # misconfig

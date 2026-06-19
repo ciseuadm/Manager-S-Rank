@@ -150,11 +150,14 @@ async def get_credited_channel_completions() -> list[dict]:
 
 
 async def get_user_channel_task_completions(user_id: int) -> list[dict]:
-    """Все подписки-задания пользователя (credited и reverted) с ссылками."""
+    """Все подписки-задания пользователя с ссылками и спонсорскими полями
+    (для расчёта окна гарантии неотписки при гейтинге следующего задания)."""
     db = await get_db()
     async with db.execute(
         """SELECT tc.id AS comp_id, tc.status, tc.reward, tc.task_id,
-                  t.title, t.url, t.channel_username, t.channel_id, t.active
+                  tc.created_at AS comp_created_at,
+                  t.title, t.url, t.channel_username, t.channel_id, t.active,
+                  t.sponsor_type, t.guarantee_days, t.ended_at
            FROM task_completions tc
            JOIN tasks t ON t.id = tc.task_id
            WHERE tc.user_id = ? AND t.type = 'channel_sub'

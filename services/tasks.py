@@ -16,9 +16,9 @@ from loguru import logger
 
 from database import (
     get_task, get_active_tasks, get_completion, get_completed_task_ids,
-    record_completion, add_mana, spend_mana, revert_mana, get_wallet_balance,
-    get_wallet, get_credited_channel_completions, mark_completion_reverted,
-    create_payout_request, count_user_credited_subs, add_xp, sub_xp,
+    record_completion, add_mana, spend_mana, get_wallet_balance,
+    get_wallet, set_task_active, task_completions_count,
+    create_payout_request, count_user_credited_subs, add_xp,
     award_achievement_capped, count_achievement,
     get_user_channel_task_completions,
 )
@@ -50,18 +50,29 @@ def mana_to_rub(amount: int) -> float:
     return amount / max(cfg.mana_per_rub, 1)
 
 
-async def find_unsubscribed_channels(bot: Bot, user_id: int) -> list[dict]:
-    """Каналы из выполненных заданий, от которых пользователь отписался."""
+async def find_unsubscribed_channels(
+    bot: Bot, user_id: int, exclude_task_id: int = 0
+) -> list[dict]:
+    """
+    Каналы прошлых спонсоров, на которых пользователь ДОЛЖЕН оставаться подписан
+    (гарантия неотписки ещё активна), но отписался. Именно они блокируют
+    зачёт следующего задания. Каналы с истёкшей гарантией не блокируют.
+    Никаких штрафов: руда и опыт за прошлые задания не трогаются.
+    """
+    from .sponsors import completion_guaranteed
+
     comps = await get_user_channel_task_completions(user_id)
     seen: set[int] = set()
     missing: list[dict] = []
     for c in comps:
-        if c.get("status") not in ("credited", "reverted"):
+        if c.get("status") != "credited":
             continue
         tid = c["task_id"]
-        if tid in seen:
+        if tid == exclude_task_id or tid in seen:
             continue
         seen.add(tid)
+        if not completion_guaranteed(c):
+            continue  # гарантия истекла — отписка разрешена, не блокируем
         try:
             member = await bot.get_chat_member(c["channel_id"], user_id)
         except Exception:
@@ -86,36 +97,6 @@ def resubscribe_keyboard(channels: list[dict]):
         b.row(InlineKeyboardButton(text=f"↩️ {title}", url=url))
     b.row(InlineKeyboardButton(text="📋 Открыть задания", callback_data="task:list"))
     return b.as_markup()
-
-
-async def notify_unsubscribe(bot: Bot, user_id: int, *, clawback_title: str = "", clawback_reward: int = 0) -> None:
-    """Сообщение об отписке + кнопки вернуться на каналы."""
-    missing = await find_unsubscribed_channels(bot, user_id)
-    lines = [
-        "⚠️ <b>Система: отписка от канала запрещена</b>\n",
-        "Ты подписался на каналы через <b>задания гильдии</b> — отписываться нельзя.",
-    ]
-    if clawback_reward:
-        lines.append(
-            f"\n❌ Награда за «{clawback_title or 'подписку'}» отозвана "
-            f"(−{clawback_reward} руды)."
-        )
-    if missing:
-        lines.append(
-            f"\n📌 Подпишись обратно на <b>{len(missing)}</b> канал(ов) — "
-            "кнопки ниже. Затем зайди в /tasks и нажми «Проверить»."
-        )
-    else:
-        lines.append("\nЗайди в /tasks и пройди проверку подписок заново.")
-    try:
-        await bot.send_message(
-            user_id,
-            "\n".join(lines),
-            parse_mode="HTML",
-            reply_markup=resubscribe_keyboard(missing) if missing else None,
-        )
-    except Exception:
-        pass
 
 
 async def user_streak(user_id: int) -> int:
@@ -159,7 +140,11 @@ async def check_and_credit_subscription(
     """
     Проверяет подписку на канал задания и начисляет руду один раз.
     Возвращает (code, reward), где code:
-      'credited' | 'already' | 'not_subscribed' | 'misconfig' | 'inactive'
+      'credited' | 'already' | 'not_subscribed' | 'misconfig' | 'inactive' | 'locked'
+
+    'locked' — мягкая блокировка: пользователь отписался от канала прошлого
+    спонсора, на котором ещё обязан быть подписан. Штрафов нет — нужно просто
+    вернуться на тот канал, и следующее задание снова станет доступно.
     """
     task = await get_task(task_id)
     if not task or not task.get("active"):
@@ -170,6 +155,12 @@ async def check_and_credit_subscription(
     existing = await get_completion(task_id, user_id)
     if existing and existing.get("status") == "credited":
         return "already", task.get("reward", 0)
+
+    # Гейт: пока не вернёшься на каналы прошлых спонсоров (с активной гарантией),
+    # новое задание не засчитывается. Это единственное «наказание» — без отъёма руды.
+    blockers = await find_unsubscribed_channels(bot, user_id, exclude_task_id=task_id)
+    if blockers:
+        return "locked", 0
 
     channel_id = task.get("channel_id")
     try:
@@ -215,6 +206,19 @@ async def check_and_credit_subscription(
         await sync_rank(bot, user_id)
     except Exception:
         pass
+
+    # Авто-стоп: заказ спонсора выполнен (набрано нужное число подписчиков) —
+    # снимаем канал из активных, дальше игрокам показываются другие задания.
+    target = task.get("target_subs", 0) or 0
+    if target > 0:
+        try:
+            done = await task_completions_count(task_id)
+            if done >= target:
+                await set_task_active(task_id, 0)
+                logger.info(f"[TASKS] task={task_id} target {target} reached → auto-stopped")
+        except Exception:
+            pass
+
     return "credited", reward
 
 
@@ -247,61 +251,6 @@ async def check_milestones(bot: Bot, user_id: int) -> None:
         )
     except Exception:
         pass
-
-
-# ── Ежедневная ре-проверка подписок (clawback) ───────────────────────────────
-
-async def recheck_subscriptions(bot: Bot) -> dict:
-    """
-    Проверяет, остались ли пользователи подписанными.
-
-    При отписке смотрим, действует ли ещё гарантия неотписки для этого канала:
-      • гарантия активна → clawback (снимаем руду+опыт, помечаем reverted,
-        уведомляем с кнопками вернуться);
-      • гарантия истекла (временный спонсор после окна / постоянный после
-        отмены + 7 дней) → released: награду и опыт НЕ трогаем, пользователь
-        свободен и не блокируется в новых заданиях.
-    """
-    from .sponsors import completion_guaranteed
-    from utils import XP_PER_TASK
-
-    comps = await get_credited_channel_completions()
-    checked = reverted = released = 0
-    for c in comps:
-        checked += 1
-        try:
-            member = await bot.get_chat_member(c["channel_id"], c["user_id"])
-        except Exception:
-            # Канал/бот недоступен — не наказываем пользователя, пропускаем.
-            continue
-        if _is_subscribed(member):
-            continue
-
-        if not completion_guaranteed(c):
-            # Гарантия истекла — отпускаем без штрафа.
-            await mark_completion_released(c["comp_id"])
-            released += 1
-            continue
-
-        await revert_mana(
-            c["user_id"], c["reward"], "task_clawback", ref_id=str(c["task_id"])
-        )
-        await sub_xp(c["user_id"], XP_PER_TASK)
-        await mark_completion_reverted(c["comp_id"])
-        reverted += 1
-        # Откат подписки может понизить ранг — тихо синхронизируем.
-        try:
-            from .ranks import sync_rank
-            await sync_rank(bot, c["user_id"], announce=False)
-        except Exception:
-            pass
-        await notify_unsubscribe(
-            bot, c["user_id"],
-            clawback_title=c.get("title") or "",
-            clawback_reward=c["reward"],
-        )
-    logger.info(f"[TASKS] recheck done: checked={checked} reverted={reverted} released={released}")
-    return {"checked": checked, "reverted": reverted, "released": released}
 
 
 # ── Обмен руды на подарок ────────────────────────────────────────────────────
