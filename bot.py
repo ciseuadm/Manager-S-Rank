@@ -142,6 +142,8 @@ OWNER_COMMANDS = PRIVATE_COMMANDS + [
     BotCommand(command="addtask", description="🆕 Новое задание-подписка"),
     BotCommand(command="tasklist", description="📋 Список заданий"),
     BotCommand(command="payouts", description="🎁 Заявки на вывод"),
+    BotCommand(command="backup", description="🗄 Бэкап БД сейчас"),
+    BotCommand(command="dbcheck", description="🩺 Проверить целостность БД"),
     BotCommand(command="cursor", description="🛰 Связь с Курсором"),
 ]
 

@@ -10,7 +10,7 @@ from loguru import logger
 
 from services.ads_scheduler import send_due_ads
 from services.tasks import recheck_subscriptions
-from services.backup import backup_database
+from services.backup import backup_and_ship
 
 
 def setup_scheduler(bot: Bot, cfg) -> AsyncIOScheduler:
@@ -30,7 +30,7 @@ def setup_scheduler(bot: Bot, cfg) -> AsyncIOScheduler:
 
     async def _daily_backup() -> None:
         try:
-            await backup_database(keep=cfg.backup_keep)
+            await backup_and_ship(bot, keep=cfg.backup_keep)
         except Exception as e:
             logger.warning(f"[SCHED] backup error: {e}")
             # Простой алертинг: бэкап — критичная вещь, владелец должен знать.
@@ -40,7 +40,7 @@ def setup_scheduler(bot: Bot, cfg) -> AsyncIOScheduler:
                         cfg.owner_id,
                         "⚠️ <b>Бэкап БД не удался</b>\n"
                         f"Причина: <code>{e}</code>\n"
-                        "Проверь свободное место и права на папку backups/.",
+                        "Проверь свободное место и права на папку бэкапов.",
                         parse_mode="HTML",
                     )
                 except Exception:

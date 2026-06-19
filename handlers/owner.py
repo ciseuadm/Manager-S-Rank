@@ -51,6 +51,10 @@ PANEL_MSG = (
     "/sendads — разослать активные кампании сейчас\n"
     "/pausead, /resumead <code>id</code> — пауза/возобновление\n"
     "/deletead <code>id</code> — удалить неактуальную кампанию\n\n"
+    "<b>🗄 Защита данных:</b>\n"
+    "/backup — снимок БД сейчас + копия тебе в личку\n"
+    "/dbcheck — проверить целостность базы\n"
+    "/restore — ответь на файл бэкапа, чтобы восстановить базу\n\n"
     "Ты также <b>супер-админ</b> во всех чатах: тебе доступны все\n"
     "команды модерации, даже если ты не админ группы."
 )
@@ -184,6 +188,79 @@ async def cmd_leavechat(message: Message, bot: Bot) -> None:
         await message.answer(f"🚪 Бот покинул чат <code>{chat_id}</code>.", parse_mode="HTML")
     except Exception as e:
         await message.answer(f"❌ Не удалось: {e}")
+
+
+# ── /backup /dbcheck /restore — защита данных ────────────────────────────────────
+
+@router.message(Command("backup"))
+async def cmd_backup(message: Message, bot: Bot) -> None:
+    from services.backup import backup_and_ship
+    from utils import get_config
+    note = await message.answer("🗄 Делаю снимок БД и проверяю целостность…")
+    try:
+        target = await backup_and_ship(bot, keep=get_config().backup_keep)
+        await note.edit_text(
+            f"✅ Бэкап готов: <code>{target.name}</code>\n"
+            f"Размер: <b>{target.stat().st_size // 1024} КБ</b>, целостность подтверждена.\n"
+            "Копия отправлена тебе (и в канал бэкапов, если задан).",
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        await note.edit_text(f"❌ Бэкап не удался: <code>{e}</code>", parse_mode="HTML")
+
+
+@router.message(Command("dbcheck"))
+async def cmd_dbcheck(message: Message) -> None:
+    from pathlib import Path
+    from services.backup import integrity_ok
+    from utils import get_config
+    db_path = Path(get_config().db_path).resolve()
+    ok, detail = integrity_ok(db_path)
+    icon = "✅" if ok else "🚨"
+    await message.answer(
+        f"{icon} <b>Проверка БД</b>\nФайл: <code>{db_path.name}</code>\n"
+        f"Результат: <b>{detail}</b>",
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("restore"))
+async def cmd_restore(message: Message, bot: Bot) -> None:
+    reply = message.reply_to_message
+    doc = reply.document if reply else None
+    if not doc or not (doc.file_name or "").endswith(".db"):
+        await message.answer(
+            "♻️ <b>Восстановление БД</b>\n\n"
+            "Ответь командой <code>/restore</code> на сообщение с файлом бэкапа "
+            "(<code>srank_*.db</code>), который я тебе присылал.\n\n"
+            "⚠️ Текущая база будет заменена. Перед заменой я автоматически сделаю "
+            "контрольный снимок текущей БД.",
+            parse_mode="HTML",
+        )
+        return
+
+    import tempfile
+    from pathlib import Path
+    from services.backup import restore_from_file
+
+    note = await message.answer("♻️ Скачиваю файл и проверяю целостность…")
+    tmp = Path(tempfile.gettempdir()) / f"restore_{doc.file_unique_id}.db"
+    try:
+        await bot.download(doc, destination=str(tmp))
+        ok, detail = await restore_from_file(tmp)
+    except Exception as e:
+        await note.edit_text(f"❌ Восстановление не удалось: <code>{e}</code>", parse_mode="HTML")
+        return
+    finally:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+
+    if ok:
+        await note.edit_text("✅ База восстановлена из бэкапа и снова в работе.")
+    else:
+        await note.edit_text(f"❌ Не восстановлено: <code>{detail}</code>", parse_mode="HTML")
 
 
 # ── Callbacks ──────────────────────────────────────────────────────────────────────

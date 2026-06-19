@@ -97,6 +97,7 @@ class Config:
     # ── Бэкапы БД ─────────────────────────────────────────────────────────────
     backup_hour: int = 4                 # час по UTC ежедневного бэкапа БД
     backup_keep: int = 14                # сколько последних бэкапов хранить
+    backup_channel_id: Optional[int] = None  # приватный канал для оффсайт-копий
 
 
 def _get_int(name: str, default: int) -> int:
@@ -179,4 +180,8 @@ def load_config() -> Config:
         cursor_model_opus=os.getenv("CURSOR_MODEL_OPUS", "claude-opus-4-8").strip(),
         backup_hour=_get_int("BACKUP_HOUR", 4),
         backup_keep=_get_int("BACKUP_KEEP", 14),
+        backup_channel_id=(
+            int(os.getenv("BACKUP_CHANNEL_ID"))
+            if os.getenv("BACKUP_CHANNEL_ID", "").lstrip("-").isdigit() else None
+        ),
     )
