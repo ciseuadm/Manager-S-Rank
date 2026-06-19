@@ -380,6 +380,23 @@ async def cmd_chats(message: Message) -> None:
     await message.answer(await _chats_text(), parse_mode="HTML")
 
 
+# ── /topweek — опубликовать топ охотников недели в канал-витрину ─────────────────
+
+@router.message(Command("topweek", "weeklytop"))
+async def cmd_topweek(message: Message, bot: Bot) -> None:
+    from services.showcase import post_weekly_top
+    ok = await post_weekly_top(bot)
+    if ok:
+        await message.answer("✅ Топ недели опубликован в канал-витрину.")
+    else:
+        await message.answer(
+            "⚠️ Не удалось опубликовать топ.\n"
+            "Проверь: задан ли <code>BOT_CHANNEL_ID</code>/<code>SUB_GATE_CHANNEL</code>, "
+            "бот — админ канала, и есть ли охотники с рудой.",
+            parse_mode="HTML",
+        )
+
+
 # ── /broadcast ────────────────────────────────────────────────────────────────────
 
 @router.message(Command("broadcast"))

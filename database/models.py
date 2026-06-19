@@ -251,6 +251,23 @@ async def unmute_user(user_id: int, chat_id: int) -> None:
     await db.commit()
 
 
+async def clear_expired_mutes() -> int:
+    """
+    Снять «протухшие» муты: у кого срок (mute_until) уже истёк, но флаг is_muted
+    в БД остался. Telegram снимает ограничение сам по until_date — мы лишь
+    синхронизируем БД, чтобы флаг не врал. Возвращает число обновлённых записей.
+    """
+    db = await get_db()
+    now = datetime.utcnow().isoformat()
+    cur = await db.execute(
+        "UPDATE users SET is_muted = 0, mute_until = NULL "
+        "WHERE is_muted = 1 AND mute_until IS NOT NULL AND mute_until <= ?",
+        (now,),
+    )
+    await db.commit()
+    return cur.rowcount or 0
+
+
 async def ban_user(user_id: int, chat_id: int, admin_id: int, reason: str = "") -> None:
     db = await get_db()
     await db.execute(

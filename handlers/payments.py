@@ -11,8 +11,11 @@ from aiogram.types import (
 )
 from loguru import logger
 
-from database import add_mana, add_payment, get_payment_by_charge
-from utils import get_config, format_mana
+from database import (
+    add_mana, add_payment, get_payment_by_charge,
+    set_payment_status, revert_mana,
+)
+from utils import get_config, format_mana, is_owner
 from utils.media import answer_with_banner
 
 router = Router()
@@ -189,3 +192,75 @@ async def on_successful_payment(message: Message) -> None:
         )
     else:
         await add_payment(user_id, stars, "unknown", payload, charge_id)
+
+
+# ── /refund — возврат Stars владельцем ───────────────────────────────────────
+
+def _granted_mana(payment: dict) -> int:
+    """Сколько руды было начислено за платёж — чтобы списать при возврате."""
+    product = payment.get("product")
+    stars = payment.get("stars", 0)
+    if product == "mana_pack":
+        ref = str(payment.get("product_ref") or "")
+        pack = _PACKS_BY_ID.get(int(ref)) if ref.isdigit() else None
+        return pack[2] if pack else stars * DONATE_MANA_PER_STAR
+    if product == "donate":
+        return stars * DONATE_MANA_PER_STAR
+    return 0
+
+
+@router.message(Command("refund"))
+async def cmd_refund(message: Message, bot: Bot) -> None:
+    if not is_owner(message.from_user.id if message.from_user else None):
+        return
+    args = (message.text or "").split()
+    if len(args) < 2:
+        await message.answer(
+            "↩️ <b>Возврат Stars</b>\n\n"
+            "Использование: <code>/refund &lt;charge_id&gt;</code>\n"
+            "charge_id берётся из таблицы платежей (telegram_payment_charge_id).\n"
+            "Я верну звёзды пользователю и спишу начисленную за них руду.",
+            parse_mode="HTML",
+        )
+        return
+
+    charge_id = args[1].strip()
+    pay = await get_payment_by_charge(charge_id)
+    if not pay:
+        await message.answer("❌ Платёж с таким charge_id не найден.")
+        return
+    if pay.get("status") == "refunded":
+        await message.answer("ℹ️ Этот платёж уже возвращён ранее.")
+        return
+
+    user_id = pay["user_id"]
+    try:
+        await bot.refund_star_payment(
+            user_id=user_id, telegram_payment_charge_id=charge_id,
+        )
+    except Exception as e:
+        logger.warning(f"[PAY] refund failed {charge_id}: {e}")
+        await message.answer(f"❌ Не удалось вернуть Stars: <code>{e}</code>", parse_mode="HTML")
+        return
+
+    await set_payment_status(charge_id, "refunded")
+    clawback = _granted_mana(pay)
+    if clawback > 0:
+        await revert_mana(user_id, clawback, "refund", ref_id=charge_id)
+
+    await message.answer(
+        f"✅ Возврат <b>{pay.get('stars', 0)}⭐</b> пользователю "
+        f"<code>{user_id}</code> выполнен.\n"
+        f"Списано руды: <b>{format_mana(clawback)}</b>.",
+        parse_mode="HTML",
+    )
+    try:
+        await bot.send_message(
+            user_id,
+            "↩️ <b>Возврат средств</b>\n\n"
+            f"Система вернула тебе <b>{pay.get('stars', 0)}⭐</b>. "
+            "Соответствующая руда списана с баланса.",
+            parse_mode="HTML",
+        )
+    except Exception:
+        pass

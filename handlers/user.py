@@ -553,6 +553,15 @@ async def on_new_member(event: ChatMemberUpdated) -> None:
     if user.is_bot:
         return
 
+    # Функции доверия (если включены админом): CAS-бан, анти-рейд, капча.
+    # Если новичок обработан деструктивно (бан/рейд-мут/капча) — без приветствия.
+    from services import screen_newcomer
+    try:
+        if await screen_newcomer(event.bot, event):
+            return
+    except Exception as e:
+        logger.warning(f"[GUARD] screen error in {event.chat.id}: {e}")
+
     await set_chat_title(event.chat.id, event.chat.title or "")
     db_user = await get_or_create_user(
         user.id, event.chat.id,

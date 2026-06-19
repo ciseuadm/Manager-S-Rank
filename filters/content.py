@@ -61,14 +61,22 @@ _SPAM_PATTERNS = re.compile(
     re.IGNORECASE | re.UNICODE,
 )
 
+# Известные TLD — чтобы не ловить ложные «node.js», «file.txt», «и т.д.».
+# Включает кириллические зоны (.рф/.укр) и латинские домены с кириллицей в теле.
+_TLDS = (
+    r"com|net|org|info|biz|xyz|top|online|site|club|shop|store|app|dev|io|me|"
+    r"ru|su|ua|by|kz|uz|am|ge|md|tj|kg|рф|укр|tv|cc|pro|link|live|space|fun|"
+    r"win|vip|gg|to|ws|cn|in|tr|de|fr|es|it|pl|co|uk"
+)
 _LINK_PATTERN = re.compile(
     r"("
     r"https?://[^\s]+|"
     r"www\.[^\s]+|"
     r"t\.me/[^\s]+|"
-    r"\b(?!t\.me)[a-zA-Z0-9\-]+\.[a-zA-Z]{2,}(?:/[^\s]*)?"
+    r"telegram\.me/[^\s]+|"
+    r"(?:[a-zA-Zа-яёА-ЯЁ0-9\-]+\.)+(?:" + _TLDS + r")\b(?:/[^\s]*)?"
     r")",
-    re.IGNORECASE,
+    re.IGNORECASE | re.UNICODE,
 )
 
 _TELEGRAM_INVITE = re.compile(

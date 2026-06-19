@@ -134,6 +134,31 @@ async def deactivate_goal(goal_id: int, chat_id: int) -> None:
     await db.commit()
 
 
+async def has_goal_award(goal_id: int, user_id: int) -> bool:
+    """True, если эта цель уже была выдана этому охотнику (защита от повторов)."""
+    db = await get_db()
+    async with db.execute(
+        "SELECT 1 FROM referral_goal_awards WHERE goal_id = ? AND user_id = ?",
+        (goal_id, user_id),
+    ) as cur:
+        return await cur.fetchone() is not None
+
+
+async def record_goal_award(goal_id: int, user_id: int) -> bool:
+    """Помечает цель выданной охотнику. Возвращает True, если запись новая
+    (False — если уже была выдана; защита от гонок через UNIQUE PK)."""
+    db = await get_db()
+    try:
+        await db.execute(
+            "INSERT INTO referral_goal_awards (goal_id, user_id) VALUES (?, ?)",
+            (goal_id, user_id),
+        )
+        await db.commit()
+        return True
+    except Exception:
+        return False
+
+
 # ── In-bot roles ───────────────────────────────────────────────────────────────
 
 async def set_chat_role(user_id: int, chat_id: int, role: str,

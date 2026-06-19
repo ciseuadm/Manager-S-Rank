@@ -8,8 +8,10 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram import Bot
 from loguru import logger
 
+from database import clear_expired_mutes
 from services.ads_scheduler import send_due_ads
 from services.backup import backup_and_ship
+from services.showcase import post_weekly_top
 
 
 def setup_scheduler(bot: Bot, cfg) -> AsyncIOScheduler:
@@ -20,6 +22,22 @@ def setup_scheduler(bot: Bot, cfg) -> AsyncIOScheduler:
             await send_due_ads(bot)
         except Exception as e:
             logger.warning(f"[SCHED] daily ads error: {e}")
+
+    async def _weekly_top() -> None:
+        try:
+            await post_weekly_top(bot)
+        except Exception as e:
+            logger.warning(f"[SCHED] weekly top error: {e}")
+
+    async def _sync_mutes() -> None:
+        # Синхронизируем «протухшие» муты: Telegram снимает их сам по until_date,
+        # а мы чистим флаг is_muted в БД, чтобы он не врал.
+        try:
+            n = await clear_expired_mutes()
+            if n:
+                logger.info(f"[SCHED] cleared {n} expired mutes")
+        except Exception as e:
+            logger.warning(f"[SCHED] mute sync error: {e}")
 
     async def _daily_backup() -> None:
         try:
@@ -49,8 +67,19 @@ def setup_scheduler(bot: Bot, cfg) -> AsyncIOScheduler:
         hour=cfg.backup_hour, minute=30,
         id="daily_backup", replace_existing=True,
     )
+    scheduler.add_job(
+        _sync_mutes, "interval",
+        minutes=5, id="sync_mutes", replace_existing=True,
+    )
+    # Канал-витрина: топ охотников недели по понедельникам.
+    scheduler.add_job(
+        _weekly_top, "cron",
+        day_of_week="mon", hour=cfg.ads_send_hour, minute=15,
+        id="weekly_top", replace_existing=True,
+    )
     logger.info(
         f"Scheduler ready: ads at {cfg.ads_send_hour:02d}:00 UTC, "
-        f"backup at {cfg.backup_hour:02d}:30 UTC (keep {cfg.backup_keep})"
+        f"backup at {cfg.backup_hour:02d}:30 UTC (keep {cfg.backup_keep}), "
+        f"mute-sync every 5 min, weekly top Mon {cfg.ads_send_hour:02d}:15 UTC"
     )
     return scheduler

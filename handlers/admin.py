@@ -3,7 +3,7 @@ Admin commands: /warn /unwarn /warns /mute /unmute /ban /unban /kick /del
 """
 from aiogram import Router, F, Bot
 from aiogram.filters import Command
-from aiogram.types import Message, ChatPermissions
+from aiogram.types import Message
 from datetime import datetime, timedelta
 from loguru import logger
 
@@ -13,6 +13,7 @@ from database import (
     get_chat_settings,
 )
 from utils import parse_time_arg, require_admin, escape_html, mention_html_raw, WARN_MSG
+from utils.tg_safe import safe_mute, safe_unmute, safe_ban, safe_unban, safe_kick
 
 router = Router()
 
@@ -78,7 +79,9 @@ async def cmd_warn(message: Message, bot: Bot) -> None:
     mention = mention_html_raw(user_id, name)
 
     if warns >= ban_limit:
-        await bot.ban_chat_member(message.chat.id, user_id)
+        if not await safe_ban(bot, message.chat.id, user_id):
+            await message.reply("❌ Не удалось забанить — у бота нет прав на бан.")
+            return
         await ban_user(user_id, message.chat.id, admin_id, reason)
         await message.answer(
             f"🚫 <b>{mention}</b> забанен после {warns} предупреждений.",
@@ -87,11 +90,9 @@ async def cmd_warn(message: Message, bot: Bot) -> None:
     elif warns >= warn_limit:
         mute_min = settings.get("mute_time", 60)
         until = datetime.utcnow() + timedelta(minutes=mute_min)
-        await bot.restrict_chat_member(
-            message.chat.id, user_id,
-            ChatPermissions(can_send_messages=False),
-            until_date=until,
-        )
+        if not await safe_mute(bot, message.chat.id, user_id, until_date=until):
+            await message.reply("❌ Не удалось заглушить — у бота нет прав на ограничение.")
+            return
         await mute_user(user_id, message.chat.id, mute_min)
         await message.answer(
             f"🔇 <b>{mention}</b> заглушён на {mute_min} мин. ({warns} предупреждений).",
@@ -183,11 +184,9 @@ async def cmd_mute(message: Message, bot: Bot) -> None:
         pass
 
     until = datetime.utcnow() + timedelta(minutes=minutes)
-    await bot.restrict_chat_member(
-        message.chat.id, user_id,
-        ChatPermissions(can_send_messages=False),
-        until_date=until,
-    )
+    if not await safe_mute(bot, message.chat.id, user_id, until_date=until):
+        await message.reply("❌ Не удалось заглушить — у бота нет прав на ограничение участников.")
+        return
     await mute_user(user_id, message.chat.id, minutes)
 
     mention = mention_html_raw(user_id, name)
@@ -209,15 +208,9 @@ async def cmd_unmute(message: Message, bot: Bot) -> None:
         return
 
     user_id, name = target
-    await bot.restrict_chat_member(
-        message.chat.id, user_id,
-        ChatPermissions(
-            can_send_messages=True,
-            can_send_media_messages=True,
-            can_send_other_messages=True,
-            can_add_web_page_previews=True,
-        ),
-    )
+    if not await safe_unmute(bot, message.chat.id, user_id):
+        await message.reply("❌ Не удалось размутить — у бота нет прав на ограничение участников.")
+        return
     await unmute_user(user_id, message.chat.id)
 
     mention = mention_html_raw(user_id, name)
@@ -248,7 +241,9 @@ async def cmd_ban(message: Message, bot: Bot) -> None:
     except Exception:
         pass
 
-    await bot.ban_chat_member(message.chat.id, user_id)
+    if not await safe_ban(bot, message.chat.id, user_id):
+        await message.reply("❌ Не удалось забанить — у бота нет прав на бан в этом чате.")
+        return
     await ban_user(user_id, message.chat.id, message.from_user.id, reason)
 
     mention = mention_html_raw(user_id, name)
@@ -272,7 +267,9 @@ async def cmd_unban(message: Message, bot: Bot) -> None:
         return
 
     user_id, name = target
-    await bot.unban_chat_member(message.chat.id, user_id, only_if_banned=True)
+    if not await safe_unban(bot, message.chat.id, user_id, only_if_banned=True):
+        await message.reply("❌ Не удалось разбанить — у бота нет прав на бан в этом чате.")
+        return
     await unban_user(user_id, message.chat.id)
 
     mention = mention_html_raw(user_id, name)
@@ -303,8 +300,9 @@ async def cmd_kick(message: Message, bot: Bot) -> None:
     except Exception:
         pass
 
-    await bot.ban_chat_member(message.chat.id, user_id)
-    await bot.unban_chat_member(message.chat.id, user_id)
+    if not await safe_kick(bot, message.chat.id, user_id):
+        await message.reply("❌ Не удалось выгнать — у бота нет прав на бан в этом чате.")
+        return
 
     mention = mention_html_raw(user_id, name)
     await message.answer(

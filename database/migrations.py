@@ -191,6 +191,41 @@ CREATE TABLE IF NOT EXISTS achievements (
     UNIQUE(user_id, code)
 );
 CREATE INDEX IF NOT EXISTS idx_ach_code ON achievements(code);
+
+-- ── Привлечение чатов (owner-рефералка: кто привёл бота-модератора) ──────────
+-- Главный рычаг роста: за каждый чат, куда охотник добавил бота И дал админку,
+-- он получает руду; за вехи (N приведённых чатов) — крупный бонус. inviter_id —
+-- тот, кто добавил бота (event.from_user). rewarded=1 после выдачи награды
+-- (выдаём один раз, когда бот стал админом). status: 'active' | 'left'.
+CREATE TABLE IF NOT EXISTS chat_referrals (
+    chat_id     INTEGER PRIMARY KEY,
+    inviter_id  INTEGER,
+    title       TEXT DEFAULT '',
+    status      TEXT DEFAULT 'active',
+    is_admin    INTEGER DEFAULT 0,
+    rewarded    INTEGER DEFAULT 0,
+    created_at  TEXT DEFAULT (datetime('now')),
+    left_at     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_chatref_inviter ON chat_referrals(inviter_id, status);
+
+-- Веховые блоки за массовое привлечение чатов: сколько «пятёрок» приведённых
+-- активных чатов уже оплачено охотнику (чтобы не платить за одну веху дважды).
+CREATE TABLE IF NOT EXISTS chat_recruit_blocks (
+    owner_id     INTEGER PRIMARY KEY,
+    blocks_paid  INTEGER DEFAULT 0,
+    created_at   TEXT DEFAULT (datetime('now'))
+);
+
+-- Дедуп выдачи per-chat целей приглашений (/setgoal): одна цель — один раз на
+-- охотника. Чинит баг «цель, созданная позже порога, никогда не срабатывает»
+-- (теперь сравнение >=, а не точное ==).
+CREATE TABLE IF NOT EXISTS referral_goal_awards (
+    goal_id    INTEGER,
+    user_id    INTEGER,
+    awarded_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (goal_id, user_id)
+);
 """
 
 
@@ -200,6 +235,12 @@ _NEW_COLUMNS = {
         "ads_enabled": "INTEGER DEFAULT 1",
         "ref_link": "TEXT",
         "delete_service_msgs": "INTEGER DEFAULT 1",
+        # Функции доверия (включаются админом чата): капча новичков «я не бот»,
+        # анти-рейд (режим «только чтение» при всплеске входов), CAS-бан
+        # (авто-бан известных спам-ботов по базе cas.chat).
+        "captcha": "INTEGER DEFAULT 0",
+        "antiraid": "INTEGER DEFAULT 0",
+        "cas_ban": "INTEGER DEFAULT 0",
     },
     "wallets": {
         # Баланс единый (wallets.mana). Колонки ниже зарезервированы под будущую

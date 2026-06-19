@@ -28,6 +28,27 @@ async def get_payment_by_charge(charge_id: str) -> Optional[dict]:
     return dict(row) if row else None
 
 
+async def set_payment_status(charge_id: str, status: str) -> None:
+    """Обновить статус платежа (например, 'refunded' после возврата Stars)."""
+    db = await get_db()
+    await db.execute(
+        "UPDATE payments SET status = ? WHERE telegram_charge_id = ?",
+        (status, charge_id),
+    )
+    await db.commit()
+
+
+async def get_user_last_payment(user_id: int) -> Optional[dict]:
+    """Последний платёж пользователя (для возврата по ID/реплаю)."""
+    db = await get_db()
+    async with db.execute(
+        "SELECT * FROM payments WHERE user_id = ? ORDER BY id DESC LIMIT 1",
+        (user_id,),
+    ) as cur:
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
 async def payments_total() -> dict:
     """Total Stars revenue and number of paid orders for the owner dashboard."""
     db = await get_db()

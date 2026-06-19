@@ -4,7 +4,7 @@ from .models import (
     get_or_create_user, increment_messages, update_user_rank,
     add_messages, claim_daily, credit_invite, get_top_inviters,
     add_warn, remove_warn, reset_warns, get_warn_history,
-    mute_user, unmute_user, ban_user, unban_user,
+    mute_user, unmute_user, clear_expired_mutes, ban_user, unban_user,
     add_blacklist_word, remove_blacklist_word, get_blacklist_words,
     increment_stat, get_chat_stats, get_top_users,
     get_all_chats, get_global_stats, remove_chat,
@@ -22,6 +22,13 @@ from .referrals import (
     set_chat_role, get_chat_role, mark_referral_rewarded,
     get_unrewarded_referral, mark_all_referrals_rewarded,
     get_primary_referral, set_referral_paid_rank,
+    has_goal_award, record_goal_award,
+)
+from .chat_referrals import (
+    record_chat_referral, get_chat_referral, set_chat_referral_admin,
+    mark_chat_referral_rewarded, mark_chat_referral_left,
+    count_active_chats_brought, list_chats_brought, top_chat_recruiters,
+    get_recruit_blocks_paid, set_recruit_blocks_paid,
 )
 from .guilds import (
     get_guild, get_or_create_guild, set_guild_name, set_guild_blocks,
@@ -35,7 +42,10 @@ from .ads import (
     set_campaign_status, delete_campaign, mark_campaign_sent, log_impression,
     impressions_today, campaign_stats, ads_global_stats,
 )
-from .payments import add_payment, get_payment_by_charge, payments_total
+from .payments import (
+    add_payment, get_payment_by_charge, payments_total,
+    set_payment_status, get_user_last_payment,
+)
 from .tasks import (
     create_task, get_task, get_active_tasks, list_tasks, set_task_active,
     task_completions_count, get_completion, get_completed_task_ids,
@@ -55,7 +65,7 @@ __all__ = [
     "get_or_create_user", "increment_messages", "update_user_rank",
     "add_messages", "claim_daily", "credit_invite", "get_top_inviters",
     "add_warn", "remove_warn", "reset_warns", "get_warn_history",
-    "mute_user", "unmute_user", "ban_user", "unban_user",
+    "mute_user", "unmute_user", "clear_expired_mutes", "ban_user", "unban_user",
     "add_blacklist_word", "remove_blacklist_word", "get_blacklist_words",
     "increment_stat", "get_chat_stats", "get_top_users",
     "get_all_chats", "get_global_stats", "remove_chat",
@@ -70,6 +80,12 @@ __all__ = [
     "set_chat_role", "get_chat_role", "mark_referral_rewarded",
     "get_unrewarded_referral", "mark_all_referrals_rewarded",
     "get_primary_referral", "set_referral_paid_rank",
+    "has_goal_award", "record_goal_award",
+    # chat acquisition (owner-рефералка)
+    "record_chat_referral", "get_chat_referral", "set_chat_referral_admin",
+    "mark_chat_referral_rewarded", "mark_chat_referral_left",
+    "count_active_chats_brought", "list_chats_brought", "top_chat_recruiters",
+    "get_recruit_blocks_paid", "set_recruit_blocks_paid",
     "get_xp", "add_xp", "sub_xp",
     # guilds
     "get_guild", "get_or_create_guild", "set_guild_name", "set_guild_blocks",
@@ -82,6 +98,7 @@ __all__ = [
     "impressions_today", "campaign_stats", "ads_global_stats",
     # payments
     "add_payment", "get_payment_by_charge", "payments_total",
+    "set_payment_status", "get_user_last_payment",
     # tasks
     "create_task", "get_task", "get_active_tasks", "list_tasks", "set_task_active",
     "task_completions_count", "get_completion", "get_completed_task_ids",

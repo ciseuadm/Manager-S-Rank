@@ -67,6 +67,22 @@ def settings_keyboard(settings: dict) -> InlineKeyboardMarkup:
         ),
     )
     builder.row(
+        InlineKeyboardButton(
+            text=f"{toggle(settings.get('captcha', 0))} Капча новичков",
+            callback_data="toggle:captcha",
+        ),
+        InlineKeyboardButton(
+            text=f"{toggle(settings.get('antiraid', 0))} Антирейд",
+            callback_data="toggle:antiraid",
+        ),
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=f"{toggle(settings.get('cas_ban', 0))} CAS-бан спам-ботов",
+            callback_data="toggle:cas_ban",
+        ),
+    )
+    builder.row(
         InlineKeyboardButton(text="📝 Приветствие", callback_data="set:welcome_msg"),
     )
     builder.row(
@@ -154,12 +170,6 @@ def shop_keyboard(is_vip: bool = False, from_menu: bool = False) -> InlineKeyboa
     )
     builder.row(
         InlineKeyboardButton(text="🎁 Обменять на подарки", callback_data="shop:gifts"),
-    )
-    builder.row(
-        InlineKeyboardButton(text="👑 Telegram Premium", callback_data="shop:premium"),
-    )
-    builder.row(
-        InlineKeyboardButton(text="📢 Реклама за руду", callback_data="shop:ads"),
     )
     builder.row(
         InlineKeyboardButton(

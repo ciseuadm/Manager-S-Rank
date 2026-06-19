@@ -17,7 +17,7 @@ from database import (
     get_unrewarded_referral, mark_all_referrals_rewarded,
     get_primary_referral, set_referral_paid_rank,
     get_or_create_guild, guild_rank_counts, set_guild_blocks,
-    get_xp,
+    get_xp, has_goal_award, record_goal_award,
 )
 from utils import (
     get_config, mention_html_raw, format_mana,
@@ -130,11 +130,21 @@ async def register_chat_referral(
 
 async def _check_goals(bot: Bot, inviter_id: int, chat_id: int,
                        new_count: int, inviter_name: str) -> None:
-    """Fire any goal whose threshold equals the inviter's new count (exact-cross)."""
+    """Fire any goal the inviter has reached (>= threshold), once per hunter.
+
+    Сравнение `>=` + дедуп через referral_goal_awards чинит баг: цель, созданная
+    уже после того, как у охотника набралось нужное число приглашений, раньше
+    никогда не срабатывала (точное сравнение ==). Теперь срабатывает один раз.
+    """
     goals = await get_referral_goals(chat_id, active_only=True)
     mention = mention_html_raw(inviter_id, inviter_name or "Охотник")
     for g in goals:
-        if g["invites_required"] != new_count:
+        if g["invites_required"] > new_count:
+            continue
+        if await has_goal_award(g["id"], inviter_id):
+            continue
+        # Бронируем выдачу атомарно — защита от гонок/двойной выдачи.
+        if not await record_goal_award(g["id"], inviter_id):
             continue
         if g["reward_type"] == "role":
             role = g["reward_value"]

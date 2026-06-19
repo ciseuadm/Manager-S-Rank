@@ -24,7 +24,7 @@ from handlers import (
     moderation_router, admin_router, user_router, settings_router,
     owner_router, economy_router, referral_router, payments_router,
     ads_router, sponsors_router, tasks_router, cursor_router, fun_router,
-    menu_router, set_bot_id,
+    menu_router, chat_lifecycle_router, guard_router, set_bot_id,
 )
 from services.cursor_bridge import bridge as cursor_bridge
 from middlewares import ThrottleMiddleware, SubGateMiddleware, EmojiFallbackMiddleware
@@ -79,6 +79,7 @@ PUBLIC_COMMANDS = [
     BotCommand(command="guild", description="🏛 Моя гильдия"),
     BotCommand(command="guilds", description="🏆 Рейтинг гильдий"),
     BotCommand(command="myref", description="🔗 Моя реф-ссылка"),
+    BotCommand(command="mychats", description="🏰 Мои чаты под охраной (награды)"),
     BotCommand(command="vip", description="👑 VIP-зал"),
     BotCommand(command="invites", description="👥 Топ по приглашениям"),
     BotCommand(command="transfer", description="💸 Передать руду (ответом)"),
@@ -106,6 +107,7 @@ PRIVATE_COMMANDS = [
     BotCommand(command="guild", description="🏛 Моя гильдия"),
     BotCommand(command="guilds", description="🏆 Рейтинг гильдий"),
     BotCommand(command="myref", description="🔗 Моя реф-ссылка"),
+    BotCommand(command="mychats", description="🏰 Мои чаты под охраной (награды)"),
     BotCommand(command="vip", description="👑 VIP-зал"),
     BotCommand(command="donate", description="💛 Поддержать проект"),
     BotCommand(command="advertise", description="📣 Реклама канала у нас"),
@@ -155,6 +157,7 @@ OWNER_COMMANDS = PRIVATE_COMMANDS + [
     BotCommand(command="adreqs", description="📥 Заявки рекламодателей"),
     BotCommand(command="endsponsor", description="🛑 Остановить спонсорство"),
     BotCommand(command="payouts", description="🎁 Заявки на вывод"),
+    BotCommand(command="refund", description="↩️ Вернуть Stars по charge_id"),
     BotCommand(command="backup", description="🗄 Бэкап БД сейчас"),
     BotCommand(command="dbcheck", description="🩺 Проверить целостность БД"),
     BotCommand(command="cursor", description="🛰 Связь с Курсором"),
@@ -271,6 +274,8 @@ async def main() -> None:
 
     # Routers — order matters: moderation last so admin commands take priority
     dp.include_router(owner_router)
+    dp.include_router(chat_lifecycle_router)
+    dp.include_router(guard_router)
     dp.include_router(menu_router)
     dp.include_router(tasks_router)
     dp.include_router(sponsors_router)
@@ -302,7 +307,10 @@ async def main() -> None:
     logger.info("Starting polling...")
     await dp.start_polling(
         bot,
-        allowed_updates=["message", "chat_member", "callback_query", "my_chat_member"],
+        allowed_updates=[
+            "message", "edited_message", "chat_member",
+            "callback_query", "my_chat_member",
+        ],
     )
 
 
