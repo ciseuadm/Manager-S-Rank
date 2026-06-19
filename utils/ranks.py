@@ -23,6 +23,21 @@ RANKS = [
 _RANK_MAP = {r[0]: r for r in RANKS}
 _RANK_IDS = [r[0] for r in RANKS]
 
+# Сколько «опыта» даёт одно выполненное задание. Шкала ранга показывается
+# игрокам в опыте (1 задание = 100 руды награды = 100 опыта), чтобы было
+# понятно и чтобы трата руды на подарки не влияла на прогресс ранга.
+XP_PER_TASK = 100
+
+
+def xp_of(score: int) -> int:
+    """Опыт = число выполненных заданий × XP_PER_TASK."""
+    return score * XP_PER_TASK
+
+
+def rank_threshold_xp(rank_id: str) -> int:
+    """Порог ранга, выраженный в опыте."""
+    return get_rank_info(rank_id)[1] * XP_PER_TASK
+
 
 def calculate_rank(score: int) -> str:
     """score = число выполненных заданий (зачтённых подписок)."""

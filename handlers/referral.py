@@ -10,13 +10,21 @@ from aiogram.types import Message
 
 from database import (
     add_referral_goal, get_referral_goals, deactivate_goal,
+    get_or_create_guild, set_guild_name, guild_member_count,
+    guild_rank_counts, top_guilds,
 )
 from services import vip_status
 from utils import (
-    require_admin, get_config, format_mana,
+    require_admin, get_config, format_mana, escape_html, mention_html,
+    rank_index, get_rank_label, RANKS,
     MYREF_MSG, MYREF_VIP_MSG, SETGOAL_HELP, GOALS_LIST_MSG,
     VIP_PROGRESS_MSG, VIP_OPEN_MSG,
+    GUILD_CARD_MSG, GUILD_NO_NAME_HINT, GUILD_RENAMED_MSG, GUILD_NAME_BAD_MSG,
+    GUILD_TOP_HEADER, GUILD_TOP_EMPTY,
 )
+
+_SS_IDX = rank_index("SS")
+_SSS_IDX = rank_index("SSS")
 
 router = Router()
 
@@ -51,6 +59,87 @@ async def cmd_myref(message: Message) -> None:
             bonus=format_mana(AGENT_REWARDS.get("D", cfg.mana_referral_rankup)),
         )
     await message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
+
+
+# ── /guild — своя гильдия (создать имя / посмотреть статистику) ───────────────
+
+def _count_at_or_above(counts: dict, min_idx: int) -> int:
+    return sum(c for r, c in counts.items() if rank_index(r) >= min_idx)
+
+
+@router.message(Command("guild", "myguild"))
+async def cmd_guild(message: Message) -> None:
+    user = message.from_user
+    if not user:
+        return
+    cfg = get_config()
+
+    # Аргумент → задать/переименовать гильдию.
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) == 2 and parts[1].strip():
+        name = " ".join(parts[1].split())
+        if not (2 <= len(name) <= 32):
+            await message.answer(GUILD_NAME_BAD_MSG, parse_mode="HTML")
+            return
+        await set_guild_name(user.id, name)
+        await message.answer(
+            GUILD_RENAMED_MSG.format(name=escape_html(name)), parse_mode="HTML"
+        )
+        return
+
+    guild = await get_or_create_guild(user.id)
+    members = await guild_member_count(user.id)
+    counts = await guild_rank_counts(user.id)
+
+    breakdown_lines = []
+    for rid, _thr, label, _title in RANKS:
+        if rid == "E":
+            continue
+        c = counts.get(rid, 0)
+        if c:
+            breakdown_lines.append(f"{label}: <b>{c}</b>")
+    breakdown = "\n".join(breakdown_lines) or "<i>пока только новички (E-ранг)</i>"
+
+    block = cfg.agent_milestone_block
+    ss = _count_at_or_above(counts, _SS_IDX)
+    sss = _count_at_or_above(counts, _SSS_IDX)
+    name = guild.get("name")
+
+    text = GUILD_CARD_MSG.format(
+        name=escape_html(name) if name else "Безымянная",
+        owner=mention_html(user),
+        members=members,
+        breakdown=breakdown,
+        ss=ss,
+        sss=sss,
+        ss_goal=(ss // block + 1) * block,
+        sss_goal=(sss // block + 1) * block,
+        ss_reward=format_mana(cfg.agent_ss_block_reward),
+        sss_reward=format_mana(cfg.agent_sss_block_reward),
+        block=block,
+        link=_bot_ref_link(cfg.bot_username, user.id),
+    )
+    if not name:
+        text += GUILD_NO_NAME_HINT
+    await message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
+
+
+# ── /guilds — рейтинг крупнейших гильдий ──────────────────────────────────────
+
+@router.message(Command("guilds", "topguilds"))
+async def cmd_guilds(message: Message) -> None:
+    rows = await top_guilds(10)
+    rows = [r for r in rows if r["members"] > 0]
+    if not rows:
+        await message.answer(GUILD_TOP_EMPTY, parse_mode="HTML", disable_web_page_preview=True)
+        return
+    medals = ["🥇", "🥈", "🥉"]
+    lines = [GUILD_TOP_HEADER]
+    for i, r in enumerate(rows):
+        prefix = medals[i] if i < 3 else f"{i + 1}."
+        name = escape_html(r["name"]) if r.get("name") else "Безымянная гильдия"
+        lines.append(f"{prefix} <b>«{name}»</b> — {r['members']} охотников")
+    await message.answer("\n".join(lines), parse_mode="HTML")
 
 
 # ── /vip ─────────────────────────────────────────────────────────────────────

@@ -14,7 +14,7 @@ from database import (
 )
 from utils import (
     calculate_rank, rank_index, get_rank_label, get_rank_title,
-    score_to_next_rank, rank_progress_bar,
+    score_to_next_rank, rank_progress_bar, xp_of,
 )
 
 from .economy import award_rank_up
@@ -25,7 +25,7 @@ RANKUP_DM = (
     "⚡ <b>СИСТЕМА: НОВЫЙ РАНГ!</b>\n\n"
     "Ты поднялся: {old_label} → <b>{new_label}</b>\n"
     "🎖 Звание: <i>{title}</i>\n"
-    "📌 Заданий выполнено: <b>{score}</b>{bonus_line}\n\n"
+    "⭐ Опыт: <b>{xp}</b>{bonus_line}\n\n"
     "<i>Чем выше ранг — тем круче статус и привилегии. Так держать, охотник!</i>"
 )
 
@@ -35,16 +35,23 @@ async def get_rank_score(user_id: int) -> int:
 
 
 async def rank_card(user_id: int) -> dict:
-    """Данные ранга для отображения в карточках (/rank, /me, welcome и т.д.)."""
+    """Данные ранга для отображения в карточках (/rank, /me, welcome и т.д.).
+
+    Прогресс показываем в ОПЫТЕ (1 задание = 100 опыта). Опыт не уменьшается
+    при трате руды на подарки — на ранг влияют только выполненные задания.
+    """
     score = await count_user_credited_subs(user_id)
     rank = calculate_rank(score)
+    to_next = score_to_next_rank(score, rank)
     return {
         "score": score,
         "rank": rank,
         "label": get_rank_label(rank),
         "title": get_rank_title(rank),
         "progress": rank_progress_bar(score, rank),
-        "to_next": score_to_next_rank(score, rank),
+        "to_next": to_next,
+        "xp": xp_of(score),
+        "xp_to_next": None if to_next is None else xp_of(to_next),
     }
 
 
@@ -81,7 +88,7 @@ async def sync_task_rank(bot: Bot, user_id: int, *, announce: bool = True) -> st
                     old_label=get_rank_label(old_rank),
                     new_label=get_rank_label(new_rank),
                     title=get_rank_title(new_rank),
-                    score=score,
+                    xp=xp_of(score),
                     bonus_line=bonus_line,
                 ),
                 parse_mode="HTML",

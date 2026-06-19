@@ -126,11 +126,10 @@ async def cmd_rank(message: Message) -> None:
     db_user = await get_or_create_user(user.id, message.chat.id, full_name=user.full_name)
     msgs = db_user.get("messages", 0)
     card = await rank_card(user.id)
-    to_next = card["to_next"]
 
     next_line = (
-        f"\n🔜 До следующего ранга: <b>{to_next}</b> заданий"
-        if to_next is not None else "\n👑 <b>МАКСИМАЛЬНЫЙ РАНГ ДОСТИГНУТ!</b>"
+        f"\n🔜 До следующего ранга: <b>{card['xp_to_next']}</b> опыта"
+        if card["xp_to_next"] is not None else "\n👑 <b>МАКСИМАЛЬНЫЙ РАНГ ДОСТИГНУТ!</b>"
     )
 
     text = (
@@ -138,11 +137,12 @@ async def cmd_rank(message: Message) -> None:
         f"👤 {mention_html(user)}\n"
         f"🏆 Ранг: <b>{card['label']}</b>\n"
         f"🎖 Звание: <i>{card['title']}</i>\n"
-        f"📌 Заданий выполнено: <b>{card['score']}</b>\n"
+        f"⭐ Опыт: <b>{card['xp']}</b>\n"
         f"💬 Сообщений: <b>{msgs}</b>\n"
         f"⚠️ Предупреждений: <b>{db_user.get('warns', 0)}</b>\n\n"
         f"📊 Прогресс ранга: {card['progress']}{next_line}\n"
-        f"<i>Ранг растёт за выполненные задания (/tasks), не за флуд.</i>"
+        f"<i>Опыт даётся за выполненные задания (/tasks) — 100 опыта за подписку. "
+        f"Трату руды на подарки опыт не теряет.</i>"
     )
     await message.answer(text, parse_mode="HTML")
 

@@ -31,6 +31,11 @@ class Config:
     # активность (первое повышение ранга). Это отсекает «слепую» накрутку.
     mana_invite_bonus: int = 0
     mana_referral_rankup: int = 50       # инвайтеру, когда приглашённый поднял ранг E→D
+    # Веховые награды агенту за массовость гильдии: за каждые N игроков ранга
+    # SS — +ss_block_reward, ранга SSS — +sss_block_reward. Цель растёт на N.
+    agent_milestone_block: int = 10
+    agent_ss_block_reward: int = 2000
+    agent_sss_block_reward: int = 4000
     mana_transfer_fee_pct: int = 5       # комиссия казны при /transfer
 
     # ── Ежедневное подземелье (бесплатный крючок) ────────────────────────────
@@ -144,6 +149,9 @@ def load_config() -> Config:
         mana_daily_bonus=_get_int("MANA_DAILY_BONUS", 0),
         mana_invite_bonus=_get_int("MANA_INVITE_BONUS", 0),
         mana_referral_rankup=_get_int("MANA_REFERRAL_RANKUP", 50),
+        agent_milestone_block=_get_int("AGENT_MILESTONE_BLOCK", 10),
+        agent_ss_block_reward=_get_int("AGENT_SS_BLOCK_REWARD", 2000),
+        agent_sss_block_reward=_get_int("AGENT_SSS_BLOCK_REWARD", 4000),
         mana_transfer_fee_pct=_get_int("MANA_TRANSFER_FEE_PCT", 5),
         daily_dungeon_base=_get_int("DAILY_DUNGEON_BASE", 25),
         daily_dungeon_ad_bonus=_get_int("DAILY_DUNGEON_AD_BONUS", 25),

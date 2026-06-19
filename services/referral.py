@@ -16,6 +16,7 @@ from database import (
     get_referral_goals, set_chat_role, add_mana, credit_invite,
     get_unrewarded_referral, mark_all_referrals_rewarded,
     get_primary_referral, set_referral_paid_rank,
+    get_or_create_guild, guild_rank_counts, set_guild_blocks,
 )
 from utils import (
     get_config, mention_html_raw, format_mana,
@@ -56,6 +57,10 @@ async def register_bot_referral(bot: Bot, inviter_id: int, invited_id: int) -> N
     cfg = get_config()
     if cfg.mana_invite_bonus > 0:
         await add_mana(inviter_id, cfg.mana_invite_bonus, "invite_bot", ref_id=str(invited_id))
+
+    # Гарантируем строку гильдии вербовщика — чтобы он попадал в рейтинг и
+    # корректно копились веховые бонусы за состав.
+    await get_or_create_guild(inviter_id)
 
     after = before + 1
     # Notify the inviter privately about progress. Награда за приглашение
@@ -163,18 +168,21 @@ async def _check_goals(bot: Bot, inviter_id: int, chat_id: int,
                     pass
 
 
-# Агентские награды: руда вербовщику («агенту») за каждую новую ранговую веху
-# его рекрута. Финансируются нашей маржой — пока рекрут жмёт подписки, мы зарабатываем
-# больше, чем платим агенту. D даёт «доказательство жизни», дальше — за рост.
+# Агентские награды (фиксированные, одноразово за каждую веху рекрута).
+# До S включительно — за ранг рекрута. SS и SSS персональных наград не дают:
+# вместо этого ведётся СЧЁТ игроков SS/SSS в гильдии и платятся веховые бонусы
+# за каждые N таких игроков (см. agent_*_block_reward в конфиге).
 AGENT_REWARDS = {
     "D": 50,
     "C": 100,
-    "B": 300,
-    "A": 800,
-    "S": 2000,
-    "SS": 4000,
-    "SSS": 8000,
+    "B": 200,
+    "A": 400,
+    "S": 800,
 }
+
+# Индексы рангов SS/SSS в общей лестнице (для подсчёта состава гильдии).
+_SS_IDX = rank_index("SS")
+_SSS_IDX = rank_index("SSS")
 
 AGENT_REWARD_MSG = (
     "🕴 <b>ОТЧЁТ АГЕНТА</b>\n\n"
@@ -183,12 +191,52 @@ AGENT_REWARD_MSG = (
     "<i>Ты — Агент Системы: зови сильных охотников и расти вместе с ними.</i>"
 )
 
+AGENT_MILESTONE_MSG = (
+    "🏛 <b>ВЕХА ГИЛЬДИИ!</b>\n\n"
+    "В твоей гильдии уже <b>{count}</b> охотников ранга <b>{rank}</b>.\n"
+    "Награда за веху: <b>{reward}</b>.\n"
+    "🎯 Следующая цель: <b>{next_goal}</b> игроков ранга {rank}.\n\n"
+    "<i>Чем больше сильных охотников ты привёл — тем щедрее Система.</i>"
+)
+
+
+def _count_at_or_above(counts: dict[str, int], min_idx: int) -> int:
+    """Сколько участников гильдии имеют ранг с индексом >= min_idx."""
+    return sum(c for r, c in counts.items() if rank_index(r) >= min_idx)
+
+
+async def _pay_milestone(bot: Bot, owner_id: int, rank_label_id: str, count: int,
+                         block: int, paid_blocks: int, block_reward: int) -> int:
+    """Доплачивает веховые бонусы за новые «десятки» игроков. Возвращает новое
+    число оплаченных блоков."""
+    blocks = count // block
+    if blocks <= paid_blocks:
+        return paid_blocks
+    amount = (blocks - paid_blocks) * block_reward
+    await add_mana(owner_id, amount, "agent_milestone", ref_id=rank_label_id)
+    try:
+        await bot.send_message(
+            owner_id,
+            AGENT_MILESTONE_MSG.format(
+                count=count,
+                rank=get_rank_label(rank_label_id),
+                reward=format_mana(amount),
+                next_goal=(blocks + 1) * block,
+            ),
+            parse_mode="HTML",
+        )
+    except Exception:
+        pass
+    return blocks
+
 
 async def reward_agent_on_rank(bot: Bot, invited_id: int, new_rank: str) -> None:
     """
-    Платит агенту-вербовщику за каждую НОВУЮ ранговую веху его рекрута.
-    Суммирует награды за все вехи между уже оплаченным рангом и текущим
-    (на случай «прыжка» через ранг). Платит ровно одному агенту на рекрута.
+    Платит агенту-вербовщику за рост его рекрута.
+    • Ранги D..S — фиксированная награда за каждую новую веху (одноразово).
+    • Ранги SS/SSS — персональных наград нет; пересчитываем число таких игроков
+      в гильдии агента и платим веховый бонус за каждые N игроков.
+    Платит ровно одному агенту на рекрута (первичный реферал).
     """
     new_idx = rank_index(new_rank)
     if new_idx <= 0:  # E или неизвестный ранг — не платим
@@ -199,28 +247,50 @@ async def reward_agent_on_rank(bot: Bot, invited_id: int, new_rank: str) -> None
     inviter_id = ref["inviter_id"]
     if inviter_id == invited_id:
         return
+
+    cfg = get_config()
     paid_idx = rank_index(ref.get("paid_rank") or "E")
     if paid_idx < 0:
         paid_idx = 0
-    if new_idx <= paid_idx:
-        return  # за эту веху уже заплачено
 
-    amount = sum(
-        reward for r, reward in AGENT_REWARDS.items()
-        if paid_idx < rank_index(r) <= new_idx
-    )
-    await set_referral_paid_rank(ref["id"], new_rank)
-    if amount <= 0:
-        return
-    await add_mana(inviter_id, amount, "agent_reward", ref_id=str(invited_id))
-    try:
-        await bot.send_message(
-            inviter_id,
-            AGENT_REWARD_MSG.format(rank=get_rank_label(new_rank), reward=format_mana(amount)),
-            parse_mode="HTML",
+    # 1) Фиксированные награды за вехи D..S (суммируем неоплаченные).
+    if new_idx > paid_idx:
+        amount = sum(
+            reward for r, reward in AGENT_REWARDS.items()
+            if paid_idx < rank_index(r) <= new_idx
         )
-    except Exception:
-        pass
+        await set_referral_paid_rank(ref["id"], new_rank)
+        if amount > 0:
+            await add_mana(inviter_id, amount, "agent_reward", ref_id=str(invited_id))
+            try:
+                await bot.send_message(
+                    inviter_id,
+                    AGENT_REWARD_MSG.format(
+                        rank=get_rank_label(new_rank), reward=format_mana(amount),
+                    ),
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass
+
+    # 2) Веховые бонусы за массовость SS/SSS (только когда рекрут добрался до SS+).
+    if new_idx >= _SS_IDX:
+        guild = await get_or_create_guild(inviter_id)
+        counts = await guild_rank_counts(inviter_id)
+        ss_count = _count_at_or_above(counts, _SS_IDX)
+        sss_count = _count_at_or_above(counts, _SSS_IDX)
+        block = cfg.agent_milestone_block
+
+        new_ss = await _pay_milestone(
+            bot, inviter_id, "SS", ss_count, block,
+            guild.get("ss_blocks_paid", 0), cfg.agent_ss_block_reward,
+        )
+        new_sss = await _pay_milestone(
+            bot, inviter_id, "SSS", sss_count, block,
+            guild.get("sss_blocks_paid", 0), cfg.agent_sss_block_reward,
+        )
+        if new_ss != guild.get("ss_blocks_paid", 0) or new_sss != guild.get("sss_blocks_paid", 0):
+            await set_guild_blocks(inviter_id, ss=new_ss, sss=new_sss)
 
 
 async def vip_status(inviter_id: int) -> tuple[int, int, bool]:

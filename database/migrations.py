@@ -55,6 +55,19 @@ CREATE TABLE IF NOT EXISTS referral_goals (
     created_at  TEXT DEFAULT (datetime('now'))
 );
 
+-- ── Гильдии (вербовочные кланы охотников) ───────────────────────────────────
+-- Гильдия = вербовщик (agent/owner). Её состав — приглашённые в бота охотники
+-- (referrals с chat_id = 0). Охотник может быть только в одной гильдии (первый,
+-- кто его привёл). ss_blocks_paid/sss_blocks_paid — сколько «десяток» игроков
+-- ранга SS/SSS уже оплачено агенту (веховые награды).
+CREATE TABLE IF NOT EXISTS guilds (
+    owner_id        INTEGER PRIMARY KEY,
+    name            TEXT,
+    ss_blocks_paid  INTEGER DEFAULT 0,
+    sss_blocks_paid INTEGER DEFAULT 0,
+    created_at      TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS chat_roles (
     user_id    INTEGER,
     chat_id    INTEGER,

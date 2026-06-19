@@ -21,6 +21,10 @@ from .referrals import (
     get_unrewarded_referral, mark_all_referrals_rewarded,
     get_primary_referral, set_referral_paid_rank,
 )
+from .guilds import (
+    get_guild, get_or_create_guild, set_guild_name, set_guild_blocks,
+    guild_member_count, guild_rank_counts, top_guilds,
+)
 from .ads import (
     create_campaign, get_active_campaigns, get_all_campaigns, get_campaign,
     set_campaign_status, delete_campaign, mark_campaign_sent, log_impression,
@@ -58,6 +62,9 @@ __all__ = [
     "set_chat_role", "get_chat_role", "mark_referral_rewarded",
     "get_unrewarded_referral", "mark_all_referrals_rewarded",
     "get_primary_referral", "set_referral_paid_rank",
+    # guilds
+    "get_guild", "get_or_create_guild", "set_guild_name", "set_guild_blocks",
+    "guild_member_count", "guild_rank_counts", "top_guilds",
     # ads
     "create_campaign", "get_active_campaigns", "get_all_campaigns", "get_campaign",
     "set_campaign_status", "delete_campaign", "mark_campaign_sent", "log_impression",
