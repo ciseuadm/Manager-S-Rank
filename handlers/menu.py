@@ -42,6 +42,11 @@ def _bot_ref_link(username: str, user_id: int) -> str:
     return f"https://t.me/{username}?start=ref_{user_id}"
 
 
+def _grp(amount: int) -> str:
+    """Число с разделителем тысяч (пробел), без эмодзи-валюты."""
+    return f"{amount:,}".replace(",", " ")
+
+
 # ── /menu ─────────────────────────────────────────────────────────────────────
 
 @router.message(Command("menu", "меню", "hub"))
@@ -130,16 +135,29 @@ async def cb_menu_wallet(call: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "menu:perks")
 async def cb_menu_perks(call: CallbackQuery) -> None:
+    from utils import rank_perks
     cfg = get_config()
+    base = cfg.mana_transfer_fee_pct
+
+    def _fee(rank: str) -> str:
+        eff = max(0, base - rank_perks(rank)["transfer_fee_off"])
+        return "без комиссии" if eff == 0 else f"комиссия перевода <b>{eff}%</b>"
+
     lines = [
         f"{ce('premium')} <b>ПРИВИЛЕГИИ ВЫСОКИХ РАНГОВ</b>\n",
         f"{ce('spark')} Достигай ранга S и выше — Система даёт бонусы:\n",
-        f"{ce('trophy')} <b>S</b> — +10% к награде за задание, −2% к комиссии перевода",
-        f"{ce('trophy')} <b>SS</b> — +20% к награде, −3% к комиссии",
-        f"{ce('crown')} <b>SSS</b> — +35% к награде, −5% к комиссии\n",
-        f"{ce('coin')} <b>Что за комиссия?</b> Это небольшой сбор казны Системы, когда "
-        "ты <b>передаёшь руду</b> другому охотнику (перевод). Базовая комиссия — "
-        f"<b>{cfg.mana_transfer_fee_pct}%</b>. Чем выше твой ранг — тем меньше платишь.",
+        f"{ce('trophy')} <b>S</b> — +{rank_perks('S')['task_reward_pct']}% "
+        f"к награде за задание · {_fee('S')}",
+        f"{ce('trophy')} <b>SS</b> — +{rank_perks('SS')['task_reward_pct']}% "
+        f"к награде · {_fee('SS')}",
+        f"{ce('crown')} <b>SSS</b> — +{rank_perks('SSS')['task_reward_pct']}% "
+        f"к награде · {_fee('SSS')}\n",
+        f"{ce('coin')} <b>Что за комиссия?</b> Это небольшой сбор Системы, который "
+        "берётся, только когда ты <b>переводишь руду</b> другому охотнику "
+        f"(/transfer). У всех базовая комиссия — <b>{base}%</b> от суммы перевода. "
+        "Ранг её снижает: например, на <b>S</b> ты платишь "
+        f"<b>{max(0, base - rank_perks('S')['transfer_fee_off'])}%</b> вместо "
+        f"<b>{base}%</b>, а на <b>SSS</b> — вообще ничего.",
     ]
     await edit_screen(call.message, "\n".join(lines), reply_markup=menu_nav_keyboard())
     await call.answer()
@@ -208,12 +226,9 @@ async def cb_menu_ref(call: CallbackQuery) -> None:
         f"{ce('check')} до S — <b>+{r['S']} руды</b>\n\n"
         f"{ce('crown')} <b>А дальше — за массовость гильдии:</b>\n"
         f"{ce('trophy')} за каждые {block} охотников ранга SS — "
-        f"<b>+{format_mana(cfg.agent_ss_block_reward)}</b>\n"
+        f"<b>+{_grp(cfg.agent_ss_block_reward)} руды</b>\n"
         f"{ce('crown')} за каждые {block} ранга SSS — "
-        f"<b>+{format_mana(cfg.agent_sss_block_reward)}</b>\n\n"
-        f"{ce('coin')} Один охотник, раскачанный до S, приносит тебе "
-        f"<b>{r['D'] + r['C'] + r['B'] + r['A'] + r['S']} руды</b>. "
-        "Он играет — ты получаешь.\n\n"
+        f"<b>+{_grp(cfg.agent_sss_block_reward)} руды</b>\n\n"
         f"{ce('link')} Твоя ссылка:\n<code>{escape_html(link)}</code>\n\n"
         f"{ce('person')} Уже приглашено: <b>{invited}</b>"
     )

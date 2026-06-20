@@ -23,7 +23,7 @@ from database import (
     list_tasks, set_task_active, create_task, set_task_priority,
     task_completions_count, list_payout_requests,
     get_payout_request, set_payout_status, get_user_achievements,
-    get_xp, list_pending_completions, get_completion_by_id, get_task,
+    list_pending_completions, get_completion_by_id, get_task,
 )
 from services import (
     daily_tasks_view, check_and_credit_subscription, check_and_credit_task,
@@ -37,8 +37,7 @@ from services.gifts import get_catalog, send_telegram_gift, offer_from_product
 from utils.redeem_ui import redeem_intro, redeem_keyboard
 from utils import (
     is_owner, get_config, format_mana, mention_html_raw, ce, escape_html,
-    get_rank_label, perks_lines, has_privileges,
-    rank_perks, calculate_rank,
+    get_rank_label, has_privileges, rank_perks,
 )
 from utils.media import answer_with_banner, edit_screen
 
@@ -145,7 +144,7 @@ async def _render_tasks(user_id: int) -> tuple[str, InlineKeyboardBuilder]:
             f"{ce('coin')} Твой баланс: <b>{format_mana(balance)}</b>\n"
             f"{perk_line}"
             f"\n{ce('alarm')} Новые задания откроются завтра. Подними ранг (S/SS/SSS) — "
-            "и за каждое задание будешь получать больше руды: /privileges\n\n"
+            "и за каждое задание будешь получать больше руды.\n\n"
             f"{ref_line}"
         )
         return text, _tasks_nav(InlineKeyboardBuilder())
@@ -234,7 +233,7 @@ async def cb_task_check(call: CallbackQuery, bot: Bot) -> None:
     elif code == "daily_limit":
         await call.answer(
             "📅 На сегодня лимит заданий исчерпан. Новые откроются завтра. "
-            "Ранг S/SS/SSS даёт больше руды за каждое задание: /privileges",
+            "Ранг S/SS/SSS даёт больше руды за каждое задание.",
             show_alert=True,
         )
         text, kb = await _render_tasks(call.from_user.id)
@@ -561,46 +560,6 @@ async def cmd_achievements(message: Message) -> None:
     lines = ["🏅 <b>ТВОИ ДОСТИЖЕНИЯ</b>\n"]
     for c in codes:
         lines.append(f"• {ACHIEVEMENT_NAMES.get(c, c)}")
-    await message.answer("\n".join(lines), parse_mode="HTML")
-
-
-# ── /privileges — привилегии высоких рангов ──────────────────────────────────
-
-@router.message(Command("privileges", "perks", "privilege"))
-async def cmd_privileges(message: Message) -> None:
-    if not message.from_user:
-        return
-    cfg = get_config()
-    my_rank = calculate_rank(await get_xp(message.from_user.id))
-
-    lines = [
-        "👑 <b>ПРИВИЛЕГИИ ОХОТНИКОВ</b>",
-        "<i>Чем выше ранг — тем больше зарабатываешь и меньше платишь Системе.</i>\n",
-        f"📅 Дневной лимит заданий — <b>{cfg.tasks_daily_limit}/день</b> для всех рангов.\n",
-    ]
-    # Таблица привилегий по рангам.
-    for rank in ("S", "SS", "SSS"):
-        p = rank_perks(rank)
-        mark = " ← ты здесь" if rank == my_rank else ""
-        lines.append(
-            f"{get_rank_label(rank)}{mark}\n"
-            f"   ⛏ +{p['task_reward_pct']}% к награде за каждое задание\n"
-            f"   💸 −{p['transfer_fee_off']}% к комиссии перевода руды"
-        )
-
-    my_perks = perks_lines(my_rank)
-    if my_perks:
-        lines.append(
-            f"\n✅ <b>Твои привилегии ({get_rank_label(my_rank)}):</b>\n"
-            + "\n".join(f"   {x}" for x in my_perks)
-        )
-    else:
-        lines.append(
-            f"\n🔓 У тебя ранг <b>{get_rank_label(my_rank)}</b> — привилегии открываются "
-            f"с ранга <b>S</b>. Базовый дневной лимит: <b>{cfg.tasks_daily_limit}</b> задания.\n"
-            "Качай ранг заданиями (/tasks) и подземельем (/dungeon)!"
-        )
-
     await message.answer("\n".join(lines), parse_mode="HTML")
 
 

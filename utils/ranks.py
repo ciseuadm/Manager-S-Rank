@@ -132,5 +132,11 @@ def perks_lines(rank_id: str) -> list[str]:
     if p["task_reward_pct"]:
         lines.append(f"⛏ +{p['task_reward_pct']}% к награде за задания")
     if p["transfer_fee_off"]:
-        lines.append(f"💸 −{p['transfer_fee_off']}% к комиссии перевода руды")
+        from utils.helpers import get_config
+        base = get_config().mana_transfer_fee_pct
+        eff = max(0, base - p["transfer_fee_off"])
+        if eff == 0:
+            lines.append("💸 перевод руды без комиссии")
+        else:
+            lines.append(f"💸 комиссия перевода {eff}% вместо {base}%")
     return lines

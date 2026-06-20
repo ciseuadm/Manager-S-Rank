@@ -184,7 +184,7 @@ async def cmd_rank(message: Message) -> None:
         f"📊 Прогресс ранга: {card['progress']}{next_line}"
         f"{perks_block}\n"
         f"<i>Опыт даётся за задания (/tasks) — 100 за подписку — и за подземелье "
-        f"(/dungeon, +руда = +опыт). Привилегии и лимиты: /privileges</i>"
+        f"(/dungeon, +руда = +опыт). Все привилегии рангов — в /menu.</i>"
     )
     await message.answer(text, parse_mode="HTML")
 

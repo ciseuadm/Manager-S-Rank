@@ -19,10 +19,10 @@ def redeem_intro(balance: int) -> str:
 def redeem_keyboard(balance: int) -> InlineKeyboardBuilder:
     b = InlineKeyboardBuilder()
     for g in get_catalog():
-        ok = balance >= g.mana_price
-        prefix = "" if ok else "🔒 "
+        # Без замочков: обмен открыт всем и работает. Если руды не хватает —
+        # об этом аккуратно сообщит обработчик нажатия (а не «закрытый» вид).
         b.row(InlineKeyboardButton(
-            text=f"{prefix}{g.emoji} {g.title} — {format_mana(g.mana_price)}",
+            text=f"{g.emoji} {g.title} — {format_mana(g.mana_price)}",
             callback_data=f"redeem:{g.key}",
         ))
     return b

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import FSInputFile, Message
 from loguru import logger
 
@@ -104,39 +103,50 @@ async def edit_screen(
     parse_mode: str = "HTML",
     disable_web_page_preview: bool = True,
 ) -> Message | None:
-    """Редактирует сообщение «на месте» для кнопочной навигации (drill-down).
+    """Переход на другой экран кнопочной навигации (drill-down).
 
-    Если сообщение с фото-баннером — правим caption (лимит 1024), иначе text
-    (лимит 4096). При сбое (например, текст не влез в caption) — отправляем
-    новое сообщение, чтобы навигация никогда не «зависала».
+    Принципиально НЕ редактируем сообщение, а шлём новое и удаляем старое:
+    редактирование в Telegram всегда вешает на пост пометку «изменено», что
+    выглядит как баг. Новый пост приходит чистым.
+
+    Чтобы не перезагружать картинку и не терять баннер, фото переотправляем
+    по уже готовому file_id текущего сообщения (мгновенно, без повторной
+    загрузки). Если текст не влезает в подпись (лимит 1024) — шлём только текст.
+    Старое сообщение удаляем лишь после успешной отправки нового, чтобы
+    навигация никогда не «зависала» на пустом месте.
     """
+    photo_id = message.photo[-1].file_id if message.photo else None
+    new_msg: Message | None = None
     try:
-        if message.photo and visible_len(text) <= _CAPTION_LIMIT:
-            return await message.edit_caption(
-                caption=text, parse_mode=parse_mode, reply_markup=reply_markup
+        if photo_id and visible_len(text) <= _CAPTION_LIMIT:
+            new_msg = await message.answer_photo(
+                photo_id, caption=text, parse_mode=parse_mode,
+                reply_markup=reply_markup,
             )
-        if not message.photo:
-            return await message.edit_text(
+        else:
+            new_msg = await message.answer(
                 text,
                 parse_mode=parse_mode,
                 reply_markup=reply_markup,
                 disable_web_page_preview=disable_web_page_preview,
             )
-    except TelegramBadRequest as e:
-        # «Обновить» без изменений — ничего не делаем, НЕ плодим новое сообщение.
-        if "message is not modified" in str(e).lower():
-            return message
-        logger.warning(f"[EDIT_SCREEN] edit failed: {e}")
     except Exception as e:
-        logger.warning(f"[EDIT_SCREEN] edit failed: {e}")
-    # Фото с длинным текстом или ошибка → новое сообщение.
-    try:
-        return await message.answer(
-            text,
-            parse_mode=parse_mode,
-            reply_markup=reply_markup,
-            disable_web_page_preview=disable_web_page_preview,
-        )
-    except Exception as e:
-        logger.warning(f"[EDIT_SCREEN] answer fallback failed: {e}")
-        return None
+        logger.warning(f"[EDIT_SCREEN] send new screen failed: {e}")
+        # Последняя попытка — простым текстом без фото.
+        try:
+            new_msg = await message.answer(
+                text,
+                parse_mode=parse_mode,
+                reply_markup=reply_markup,
+                disable_web_page_preview=disable_web_page_preview,
+            )
+        except Exception as e2:
+            logger.warning(f"[EDIT_SCREEN] text fallback failed: {e2}")
+            return None
+
+    if new_msg is not None:
+        try:
+            await message.delete()
+        except Exception:
+            pass
+    return new_msg

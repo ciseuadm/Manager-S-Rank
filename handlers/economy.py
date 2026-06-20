@@ -146,17 +146,45 @@ async def cb_shop(call: CallbackQuery) -> None:
         return
 
     if action == "buy":
+        if not cfg.payments_enabled:
+            await edit_screen(msg, COMING_SOON_MSG, reply_markup=shop_back_keyboard())
+            await call.answer()
+            return
+
+        if is_private:
+            # Мы уже в ЛС — продаём пакеты прямо здесь, без «открой в личке».
+            from handlers.payments import MANA_PACKS
+            from aiogram.utils.keyboard import InlineKeyboardBuilder
+            b = InlineKeyboardBuilder()
+            for pid, stars, mana in MANA_PACKS:
+                b.row(InlineKeyboardButton(
+                    text=f"⭐ {stars} → {mana:,} руды".replace(",", " "),
+                    callback_data=f"buy:{pid}",
+                ))
+            b.row(InlineKeyboardButton(text="⬅️ В магазин", callback_data="shop:root"))
+            text = (
+                f"{ce('coin')} <b>ПОПОЛНЕНИЕ МАНА-РУДЫ</b>\n\n"
+                f"Купи руду за Telegram Stars {ce('star')} — быстро и официально, "
+                "прямо здесь.\n"
+                "Выбери пакет ниже — Система пришлёт счёт на оплату 👇\n\n"
+                f"<i>{ce('spark')} Stars списываются внутри Telegram, без внешних "
+                "кошельков.</i>"
+            )
+            await edit_screen(msg, text, reply_markup=b.as_markup())
+            await call.answer()
+            return
+
+        # В группе — счёт выставить нельзя, ведём в ЛС бота одной кнопкой.
         bot_uname = cfg.bot_username
         extra = None
-        if not is_private and bot_uname:
+        if bot_uname:
             extra = [InlineKeyboardButton(
                 text="💳 Открыть бота и купить", url=f"https://t.me/{bot_uname}?start=buy"
             )]
         text = (
             f"{ce('coin')} <b>ПОПОЛНЕНИЕ МАНА-РУДЫ</b>\n\n"
             f"Купи руду за Telegram Stars {ce('star')} — быстро и официально.\n"
-            "Открой бота в личке и отправь команду <b>/buy</b> "
-            "(или выбери пакет в разделе покупки).\n\n"
+            "Покупка идёт в личке бота: нажми кнопку ниже и выбери пакет.\n\n"
             "<i>Stars пополняются прямо в Telegram, без внешних кошельков.</i>"
         )
         await edit_screen(msg, text, reply_markup=shop_back_keyboard(extra))
