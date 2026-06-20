@@ -81,7 +81,9 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot) -> None:
 async def cb_subgate_check(call: CallbackQuery, bot: Bot) -> None:
     """Кнопка «Я подписался»: перепроверяем подписку и открываем доступ."""
     if await is_gate_passed(bot, call.from_user.id):
-        await call.answer("✅ Доступ открыт! Добро пожаловать, охотник.", show_alert=True)
+        # Без модалки: сразу убираем гейт и показываем приветствие с меню —
+        # переход выходит плавным, лишний попап не перекрывает экран.
+        await call.answer()
         try:
             await call.message.delete()
         except Exception:

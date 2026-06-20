@@ -67,57 +67,38 @@ BANNER = r"""
 
 
 # Commands visible to every member (no moderation/settings here).
+# В группах «/» — это и есть интерфейс (кнопочный хаб /menu только в личке),
+# поэтому держим игровой/атмосферный костяк и команды, которыми пользуются
+# прямо в чате. Личные и чисто-информационные дубли убраны из списка, но их
+# хендлеры остаются рабочими (кто знает — наберёт), всё важное есть в /menu.
 PUBLIC_COMMANDS = [
     BotCommand(command="rank", description="🏆 Моя карточка охотника"),
     BotCommand(command="top", description="📊 Топ охотников чата"),
-    BotCommand(command="wallet", description="🔹 Хранилище Мана-руды"),
-    BotCommand(command="shop", description="🛒 Рынок гильдии"),
     BotCommand(command="dungeon", description="🏰 Подземелье: до 50 руды/день"),
     BotCommand(command="daily", description="🎁 Ежедневный бонус опыта"),
-    BotCommand(command="tasks", description="📋 Задания: +100 руды за подписку"),
-    BotCommand(command="redeem", description="🎁 Обменять руду на подарок"),
-    BotCommand(command="achievements", description="🏅 Мои достижения"),
-    BotCommand(command="invite", description="⚔️ Пригласить друзей"),
-    BotCommand(command="guild", description="🏛 Моя гильдия"),
-    BotCommand(command="guilds", description="🏆 Рейтинг гильдий"),
-    BotCommand(command="myref", description="🔗 Моя реф-ссылка"),
-    BotCommand(command="vip", description="👑 VIP-зал"),
-    BotCommand(command="invites", description="👥 Топ по приглашениям"),
     BotCommand(command="transfer", description="💸 Передать руду (ответом)"),
-    BotCommand(command="info", description="ℹ️ Инфо о пользователе"),
-    BotCommand(command="stats", description="📈 Статистика чата"),
-    BotCommand(command="rules", description="📜 Правила чата"),
-    BotCommand(command="oracle", description="🔮 Предсказание Системы"),
     BotCommand(command="duel", description="⚔️ Дуэль (на ставку: /duel 100)"),
     BotCommand(command="raid", description="🐉 Групповой рейд за рудой"),
-    BotCommand(command="clan", description="🏛 Мой клан"),
-    BotCommand(command="clans", description="🏆 Топ кланов чата"),
-    BotCommand(command="marry", description="💍 Брак охотников (ответом)"),
-    BotCommand(command="note", description="📝 Показать заметку чата"),
-    BotCommand(command="notes", description="📒 Заметки чата"),
+    BotCommand(command="oracle", description="🔮 Предсказание Системы"),
     BotCommand(command="dice", description="🎲 Бросок кубика"),
+    BotCommand(command="marry", description="💍 Брак охотников (ответом)"),
+    BotCommand(command="guild", description="🏛 Моя гильдия"),
+    BotCommand(command="clans", description="🏆 Топ кланов чата"),
+    BotCommand(command="rules", description="📜 Правила чата"),
     BotCommand(command="help", description="📋 Список команд"),
-    BotCommand(command="id", description="🆔 Узнать свой ID"),
 ]
 
 # Commands shown only in private chat with the bot.
+# В личке всё управление — в кнопочном /menu, поэтому «/» держим предельно
+# коротким: только вход, хаб, атмосферное подземелье, гильдия и помощь.
+# Остальные команды (wallet/tasks/redeem/shop/buy/vip/myref/donate/advertise/id)
+# работают, но не засоряют список — они уже есть кнопками в /menu.
 PRIVATE_COMMANDS = [
     BotCommand(command="start", description="⚡ Главное меню бота"),
     BotCommand(command="menu", description="📲 Меню в кнопках (всё сразу)"),
     BotCommand(command="dungeon", description="🏰 Подземелье: до 50 руды/день"),
-    BotCommand(command="wallet", description="🔹 Хранилище Мана-руды"),
-    BotCommand(command="tasks", description="📋 Задания: +100 руды за подписку"),
-    BotCommand(command="redeem", description="🎁 Обменять руду на подарок"),
-    BotCommand(command="shop", description="🛒 Рынок гильдии"),
-    BotCommand(command="buy", description="💎 Купить руду за Stars"),
     BotCommand(command="guild", description="🏛 Моя гильдия"),
-    BotCommand(command="guilds", description="🏆 Рейтинг гильдий"),
-    BotCommand(command="myref", description="🔗 Моя реф-ссылка"),
-    BotCommand(command="vip", description="👑 VIP-зал"),
-    BotCommand(command="donate", description="💛 Поддержать проект"),
-    BotCommand(command="advertise", description="📣 Реклама канала у нас"),
     BotCommand(command="help", description="📋 Список команд"),
-    BotCommand(command="id", description="🆔 Узнать свой ID"),
 ]
 
 # Admin-only management commands (appended to the public list for admins).
