@@ -160,29 +160,24 @@ def effective_daily_limit(rank: str = "") -> int:
     return get_config().tasks_daily_limit
 
 
-# Стартовые задания-боты (постоянные, проверка ручным пруфом-скрином). Авто-
-# проверки «нажал старт в чужом боте» / «набрал N очков в чужой игре» в Telegram
-# нет (см. ниже), поэтому verify_mode='proof' — пользователь шлёт скрин, владелец
-# подтверждает в /taskproofs. priority=-1 — ниже каналов в выдаче.
+# Стартовые задания-боты с АВТО-зачётом по постбэку (verify_mode='postback').
+# Telegram не даёт «снаружи» проверить запуск чужого бота / очки в чужой игре,
+# поэтому зачёт приходит сервером: бот-цель при выполнении дёргает наш /cb/task
+# с выданным в deep-link токеном (инструкция владельцу — команда /taskcb <id>).
+# priority=-1 — ниже каналов в выдаче.
 _STARTER_BOT_TASKS = [
     {
         "type": "bot_start",
         "title": "Запусти бота Add Button Manage",
-        "url": "https://t.me/Add_Button_Manage_Bot?start=srank",
-        "description": (
-            "Запусти бота (нажми Start) и пришли скрин, что он открылся. "
-            "Пруф: /proof <id> (ответом на скриншот)."
-        ),
+        "url": "https://t.me/Add_Button_Manage_Bot",
+        "description": "Открой бота по кнопке и нажми Start — Система зачтёт автоматически.",
         "reward": 100,
     },
     {
         "type": "external",
         "title": "Набери 20 очков в Flappy Birds",
         "url": "https://t.me/world_fleppy_birds_bot",
-        "description": (
-            "Набери 20 очков в игре и пришли скрин результата. "
-            "Пруф: /proof <id> (ответом на скриншот)."
-        ),
+        "description": "Открой игру по кнопке и набери 20 очков — зачёт автоматический.",
         "reward": 100,
     },
 ]
@@ -283,7 +278,7 @@ async def seed_starter_tasks(bot: Bot) -> int:
             description=bt["description"],
             target_subs=0,
             guarantee_days=0,
-            verify_mode="proof",
+            verify_mode="postback",
             priority=-1,
         )
         created += 1
@@ -500,6 +495,14 @@ async def check_and_credit_task(
     if mode == "timer":
         return await watch_claim(bot, user_id, task_id)
 
+    # Постбэк: зачёт приходит сервером (бот рекламодателя дёргает /cb/task).
+    # Кнопка «Проверить» лишь сообщает статус — сами не начисляем.
+    if mode == "postback":
+        existing = await get_completion(task_id, user_id)
+        if existing and existing.get("status") == "credited":
+            return "already", task.get("reward", 0)
+        return "postback_wait", 0
+
     existing = await get_completion(task_id, user_id)
     if existing and existing.get("status") == "credited":
         return "already", task.get("reward", 0)
@@ -544,6 +547,60 @@ async def check_and_credit_task(
         return await _grant_generic(bot, task, user_id, rank, "task_quiz")
 
     return "misconfig", 0
+
+
+async def credit_postback(bot: Bot, user_id: int, task_id: int) -> tuple[str, int]:
+    """
+    Серверный зачёт задания по постбэку (бот рекламодателя подтвердил выполнение
+    через /cb/task). Идемпотентно: повторный вызов не начисляет дважды.
+    Возвращает (code, reward): 'credited' | 'already' | 'inactive' | 'misconfig'.
+    """
+    task = await get_task(task_id)
+    if not task or not task.get("active"):
+        return "inactive", 0
+    mode = task.get("verify_mode") or default_verify_mode(task.get("type", "channel_sub"))
+    if mode != "postback":
+        return "misconfig", 0
+
+    existing = await get_completion(task_id, user_id)
+    if existing and existing.get("status") == "credited":
+        return "already", task.get("reward", 0)
+
+    rank = calculate_rank(await get_xp(user_id))
+    reward = int(round(task.get("reward", 0) * rank_reward_multiplier(rank)))
+    created = await record_completion(task_id, user_id, reward, "credited")
+    if not created:
+        return "already", reward
+
+    await add_mana(user_id, reward, "task_postback", ref_id=str(task_id))
+    from utils import XP_PER_TASK
+    await add_xp(user_id, XP_PER_TASK)
+    logger.info(f"[TASKS] postback credited user={user_id} task={task_id} +{reward}")
+    await check_milestones(bot, user_id)
+    try:
+        from .ranks import sync_rank
+        await sync_rank(bot, user_id)
+    except Exception:
+        pass
+
+    target = task.get("target_subs", 0) or 0
+    if target > 0:
+        try:
+            if await task_completions_count(task_id) >= target:
+                await set_task_active(task_id, 0)
+        except Exception:
+            pass
+
+    try:
+        await bot.send_message(
+            user_id,
+            f"✅ <b>Задание выполнено!</b>\n«{task.get('title', '')}» — "
+            f"Система зачла действие автоматически. +{reward} руды на баланс. ⚡",
+            parse_mode="HTML",
+        )
+    except Exception:
+        pass
+    return "credited", reward
 
 
 async def watch_claim(bot: Bot, user_id: int, task_id: int) -> tuple[str, int]:

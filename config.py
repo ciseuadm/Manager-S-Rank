@@ -159,6 +159,14 @@ class Config:
     crypto_min_mana: int = 5000          # минимум на вывод (≈100 ₽ при 50 руды/₽)
     crypto_daily_limit_mana: int = 50000 # потолок суммы заявок в сутки на охотника
 
+    # ── Постбэк-проверка заданий (S2S callback / CPA-модель) ─────────────────
+    # Автоматический зачёт действий, которые Telegram не даёт проверить «снаружи»
+    # (запуск чужого бота, очки в чужой игре и т.п.). Схема: мы выдаём охотнику
+    # подписанный токен в deep-link на бота рекламодателя; бот рекламодателя при
+    # выполнении дёргает наш URL /cb/task?token=… — мы проверяем подпись и
+    # начисляем. Секрет подписи; если пусто — берём производную от токена бота.
+    task_callback_secret: str = ""
+
     # ── Mini App (Telegram WebApp) ───────────────────────────────────────────
     # Бэкенд Mini App поднимается в том же процессе (aiohttp) на webapp_port.
     # webapp_url — ПУБЛИЧНЫЙ https-адрес (нужен для кнопки web_app в Telegram).
@@ -303,6 +311,7 @@ def load_config() -> Config:
         crypto_api_base=os.getenv("CRYPTO_API_BASE", "https://pay.crypt.bot/api").strip(),
         crypto_min_mana=_get_int("CRYPTO_MIN_MANA", 5000),
         crypto_daily_limit_mana=_get_int("CRYPTO_DAILY_LIMIT_MANA", 50000),
+        task_callback_secret=os.getenv("TASK_CALLBACK_SECRET", "").strip(),
         webapp_enabled=_get_bool("WEBAPP_ENABLED", False),
         webapp_url=os.getenv("WEBAPP_URL", "").strip(),
         webapp_port=_get_int("PORT", _get_int("WEBAPP_PORT", 8080)),

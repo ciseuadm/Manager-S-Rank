@@ -292,6 +292,31 @@ async def _notify_owner_payout(bot: Bot, req_id: int, user_id: int, offer) -> No
         pass
 
 
+async def cb_task(request: web.Request) -> web.Response:
+    """
+    Постбэк-зачёт задания (S2S callback). Бот рекламодателя при выполнении
+    действия дёргает: GET/POST /cb/task?token=<выданный_в_start_токен>.
+    Подпись токена проверяем нашим секретом — подделать чужой зачёт нельзя.
+    """
+    token = request.query.get("token", "") or request.query.get("data", "")
+    if not token and request.method == "POST":
+        try:
+            body = await request.json()
+            token = body.get("token", "") or body.get("data", "")
+        except Exception:
+            token = ""
+    from utils.callbacks import verify_task_token
+    res = verify_task_token(token)
+    if not res:
+        return web.json_response({"ok": False, "error": "bad_token"}, status=403)
+    user_id, task_id = res
+    from services.tasks import credit_postback
+    code, reward = await credit_postback(request.app["bot"], user_id, task_id)
+    return web.json_response(
+        {"ok": code in ("credited", "already"), "code": code, "reward": reward}
+    )
+
+
 async def index(request: web.Request) -> web.Response:
     f = _WEBAPP_DIR / "index.html"
     if not f.exists():
@@ -316,15 +341,20 @@ def build_app(bot: Bot) -> web.Application:
     app.router.add_post("/api/shop", api_shop)
     app.router.add_post("/api/redeem", api_redeem)
     app.router.add_post("/api/payout_crypto", api_payout_crypto)
+    # Постбэк-проверка заданий (S2S): принимаем и GET, и POST.
+    app.router.add_get("/cb/task", cb_task)
+    app.router.add_post("/cb/task", cb_task)
     if _WEBAPP_DIR.exists():
         app.router.add_static("/static/", path=str(_WEBAPP_DIR), name="static")
     return app
 
 
 async def start_webapp(bot: Bot) -> Optional[web.AppRunner]:
-    """Поднять Mini App сервер на webapp_port. Возвращает runner для остановки."""
+    """Поднять встроенный сервер на webapp_port (Mini App + постбэки заданий).
+    Запускаем, если включён Mini App ИЛИ задан публичный адрес (нужен для
+    постбэк-проверки заданий /cb/task). Возвращает runner для остановки."""
     cfg = get_config()
-    if not cfg.webapp_enabled:
+    if not (cfg.webapp_enabled or cfg.webapp_url or cfg.webhook_url):
         return None
     app = build_app(bot)
     runner = web.AppRunner(app)

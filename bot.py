@@ -157,6 +157,7 @@ OWNER_COMMANDS = PRIVATE_COMMANDS + [
     BotCommand(command="addproof", description="📤 Задание с ручным пруфом"),
     BotCommand(command="taskproofs", description="📥 Очередь пруфов"),
     BotCommand(command="tasklist", description="📋 Список заданий"),
+    BotCommand(command="taskcb", description="🔌 Авто-проверка задания (постбэк)"),
     BotCommand(command="boosttask", description="🚀 Поднять задание в выдаче"),
     BotCommand(command="adreqs", description="📥 Заявки рекламодателей"),
     BotCommand(command="endsponsor", description="🛑 Остановить спонсорство"),

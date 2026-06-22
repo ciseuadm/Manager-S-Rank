@@ -63,7 +63,8 @@ _TYPE_ICON = {
 }
 
 
-def _tasks_keyboard(tasks: list[dict]) -> InlineKeyboardBuilder:
+def _tasks_keyboard(tasks: list[dict], user_id: int = 0) -> InlineKeyboardBuilder:
+    from utils.callbacks import sign_task_token, deeplink_with_token
     b = InlineKeyboardBuilder()
     for t in tasks:
         icon = _TYPE_ICON.get(t.get("type"), "📌")
@@ -72,9 +73,22 @@ def _tasks_keyboard(tasks: list[dict]) -> InlineKeyboardBuilder:
             f"https://t.me/{t['channel_username']}" if t.get("channel_username") else None
         )
         title = (t.get("title") or "Задание")[:32]
+        reward = t["reward"]
+
+        if mode == "postback":
+            # Персональная ссылка с подписанным токеном: бот-цель вернёт его в
+            # наш /cb/task и Система зачтёт автоматически.
+            token = sign_task_token(user_id, t["id"]) if user_id else ""
+            link = deeplink_with_token(url or "", token) or url
+            if link:
+                b.row(InlineKeyboardButton(text=f"{icon} {title} → +{reward}", url=link))
+            b.row(InlineKeyboardButton(
+                text="🔄 Я выполнил — проверить",
+                callback_data=f"task:check:{t['id']}"))
+            continue
+
         if url:
             b.row(InlineKeyboardButton(text=f"{icon} {title}", url=url))
-        reward = t["reward"]
         if mode == "membership":
             b.row(InlineKeyboardButton(
                 text=f"🔍 Проверить и забрать +{reward} руды",
@@ -175,7 +189,7 @@ async def _render_tasks(user_id: int) -> tuple[str, InlineKeyboardBuilder]:
         "открывает новые задания (руду не забираем).\n\n"
         f"{ref_line}"
     )
-    return text, _tasks_keyboard(tasks)
+    return text, _tasks_keyboard(tasks, user_id)
 
 
 @router.message(Command("tasks", "task"))
@@ -238,6 +252,13 @@ async def cb_task_check(call: CallbackQuery, bot: Bot) -> None:
         )
         text, kb = await _render_tasks(call.from_user.id)
         await edit_screen(call.message, text, reply_markup=kb.as_markup())
+    elif code == "postback_wait":
+        await call.answer(
+            "⏳ Пока не вижу выполнения. Открой бота/игру по кнопке и выполни "
+            "условие — Система зачтёт автоматически в течение минуты, награда "
+            "придёт сама. Повторно жать не нужно.",
+            show_alert=True,
+        )
     elif code == "not_subscribed":
         await call.answer(
             "❌ Подписка не найдена. Подпишись на канал задания и нажми «Проверить» снова.",
@@ -563,6 +584,61 @@ async def cmd_achievements(message: Message) -> None:
     for c in codes:
         lines.append(f"• {ACHIEVEMENT_NAMES.get(c, c)}")
     await message.answer("\n".join(lines), parse_mode="HTML")
+
+
+# ── Owner: инструкция постбэк-интеграции задания ─────────────────────────────
+
+@router.message(Command("taskcb"), F.chat.type == "private")
+async def cmd_taskcb(message: Message) -> None:
+    if not is_owner(message.from_user.id):
+        return
+    from utils.callbacks import (
+        sign_task_token, public_base_url, bot_username_from_url,
+    )
+    args = (message.text or "").split()
+    if len(args) < 2 or not args[1].isdigit():
+        await message.answer(
+            "✏️ Использование: <code>/taskcb &lt;id задания&gt;</code>\n"
+            "Покажу, как подключить АВТО-проверку (постбэк) для этого задания.",
+            parse_mode="HTML",
+        )
+        return
+    task_id = int(args[1])
+    task = await get_task(task_id)
+    if not task:
+        await message.answer("Задание не найдено.")
+        return
+
+    base = public_base_url()
+    base_show = base or "https://&lt;твой-публичный-адрес&gt;"
+    bot_name = bot_username_from_url(task.get("url") or "") or "&lt;бот-цель&gt;"
+    sample_token = sign_task_token(message.from_user.id, task_id)
+    warn = "" if base else (
+        "\n⚠️ <b>Публичный адрес не задан.</b> Чтобы постбэк работал, задай "
+        "<code>WEBAPP_URL</code> или <code>WEBHOOK_URL</code> (https) в .env.\n"
+    )
+    await message.answer(
+        f"🔌 <b>АВТО-ПРОВЕРКА ЗАДАНИЯ #{task_id}</b>\n"
+        f"«{escape_html(task.get('title',''))}»\n\n"
+        "Как это работает (без ручных подтверждений):\n\n"
+        f"1️⃣ Охотник получает в Системе персональную ссылку на бота-цель:\n"
+        f"<code>https://t.me/{escape_html(bot_name)}?start=&lt;TOKEN&gt;</code>\n"
+        f"   (TOKEN уникален на каждого охотника, Система выдаёт его сама)\n\n"
+        f"2️⃣ Бот-цель в обработчике <code>/start</code> читает payload (TOKEN) и "
+        "запоминает его за пользователем.\n\n"
+        f"3️⃣ Когда охотник выполнил действие (запустил бота / набрал очки), "
+        "бот-цель дёргает наш постбэк:\n"
+        f"<code>GET {escape_html(base_show)}/cb/task?token=&lt;TOKEN&gt;</code>\n\n"
+        f"Система проверит подпись токена и <b>сама начислит руду</b>. Повтор "
+        "безопасен — дважды не начислит.\n"
+        f"{warn}\n"
+        f"🧪 Пример рабочего URL (токен для тебя):\n"
+        f"<code>{escape_html(base_show)}/cb/task?token={escape_html(sample_token)}</code>\n\n"
+        "<i>Подпись секретная — подделать зачёт на чужой аккаунт нельзя. Этот же "
+        "механизм подойдёт для любых будущих ботов-рекламодателей.</i>",
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
 
 
 # ── Owner: мастер добавления задания ─────────────────────────────────────────
