@@ -17,9 +17,12 @@ from database import (
 )
 from keyboards import owner_keyboard
 from services import broadcast
+import asyncio
+
 from utils import (
     is_owner, format_mana, escape_html, get_config,
     ANNOUNCE_LAUNCH, ANNOUNCE_REFERRAL, strip_custom_emoji,
+    ADVERTISER_OFFER_POST, PARTNER_AUTOVERIFY_POST, ce,
 )
 from utils.economy_rates import star_rub
 from utils.media import answer_with_banner
@@ -40,6 +43,35 @@ class IsOwnerCb(BaseFilter):
 # Owner filter applies to the whole router → никто, кроме владельца, не видит панель.
 router.message.filter(IsOwner())
 router.callback_query.filter(IsOwnerCb())
+
+
+# ── Маркетинг-набор: готовые посты владельцу ─────────────────────────────────
+
+@router.message(Command("promo", "posts", "promoposts"))
+async def cmd_promo(message: Message) -> None:
+    """Присылает владельцу готовые оформленные посты (баннер + премиум-эмодзи):
+    анонс запуска, доход с друзей, оффер рекламодателям, авто-проверка партнёрам.
+    Их можно публиковать в канале или пересылать как есть."""
+    await message.answer(
+        f"{ce('rocket')} <b>МАРКЕТИНГ-НАБОР</b>\n\n"
+        "Ниже — готовые посты в фирменном стиле. Можешь публиковать в канале "
+        "(<code>/announce</code>), пересылать рекламодателям или закреплять.\n"
+        f"<i>{ce('spark')} Премиум-эмодзи показываются, если у тебя активен "
+        "Telegram Premium; в каналах Telegram заменит их на обычные — это норма.</i>",
+        parse_mode="HTML",
+    )
+    posts = [
+        ("start", ANNOUNCE_LAUNCH),
+        ("earn", ANNOUNCE_REFERRAL),
+        ("ads_offer", ADVERTISER_OFFER_POST),
+        ("partner", PARTNER_AUTOVERIFY_POST),
+    ]
+    for key, text in posts:
+        try:
+            await answer_with_banner(message, key, text)
+        except Exception as e:
+            logger.warning(f"[PROMO] post {key} failed: {e}")
+        await asyncio.sleep(0.4)
 
 
 PANEL_MSG = (

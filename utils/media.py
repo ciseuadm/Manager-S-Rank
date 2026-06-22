@@ -28,6 +28,8 @@ BANNERS: dict[str, str] = {
     "owner": "banner_owner.png",
     "tasks": "banner_tasks.png",
     "buy": "banner_shop.png",
+    "ads_offer": "banner_ads_offer.png",
+    "partner": "banner_partner.png",
 }
 
 _CAPTION_LIMIT = 1024
