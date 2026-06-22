@@ -24,7 +24,8 @@ from database import (
     award_achievement_capped, count_achievement,
     get_user_channel_task_completions, count_user_completions_today,
     get_completion_by_id, set_completion_status, has_pending_completion,
-    payout_sum_today, count_active_tasks, get_task_by_channel, create_task,
+    payout_sum_today, count_active_tasks, get_task_by_channel, get_task_by_url,
+    create_task,
 )
 from utils import (
     get_config, calculate_rank, rank_reward_multiplier,
@@ -159,22 +160,48 @@ def effective_daily_limit(rank: str = "") -> int:
     return get_config().tasks_daily_limit
 
 
+# Стартовые задания-боты (постоянные, проверка ручным пруфом-скрином). Авто-
+# проверки «нажал старт в чужом боте» / «набрал N очков в чужой игре» в Telegram
+# нет (см. ниже), поэтому verify_mode='proof' — пользователь шлёт скрин, владелец
+# подтверждает в /taskproofs. priority=-1 — ниже каналов в выдаче.
+_STARTER_BOT_TASKS = [
+    {
+        "type": "bot_start",
+        "title": "Запусти бота Add Button Manage",
+        "url": "https://t.me/Add_Button_Manage_Bot?start=srank",
+        "description": (
+            "Запусти бота (нажми Start) и пришли скрин, что он открылся. "
+            "Пруф: /proof <id> (ответом на скриншот)."
+        ),
+        "reward": 100,
+    },
+    {
+        "type": "external",
+        "title": "Набери 20 очков в Flappy Birds",
+        "url": "https://t.me/world_fleppy_birds_bot",
+        "description": (
+            "Набери 20 очков в игре и пришли скрин результата. "
+            "Пруф: /proof <id> (ответом на скриншот)."
+        ),
+        "reward": 100,
+    },
+]
+
+
 async def seed_starter_tasks(bot: Bot) -> int:
     """
-    Стартовый («домашний») пул заданий-подписок, чтобы экономика жила с первого
-    дня — до прихода рекламодателей. Идемпотентно: запускается на старте бота и
-    создаёт задания ТОЛЬКО если активных заданий-подписок ещё нет.
+    Стартовый («домашний») пул заданий, чтобы экономика жила с первого дня — до
+    прихода рекламодателей. Идемпотентно: на каждом старте создаёт лишь те
+    задания, которых ещё нет (дедуп по channel_id для каналов и по url для ботов).
 
-    Каналы: канал бота (sub_gate_channel) + config.starter_task_channels.
-    Бот обязан быть админом в канале (иначе подписку не проверить) — такие
-    каналы тихо пропускаются. Дубли по channel_id не создаются.
+    • Каналы (sub_gate_channel + config.starter_task_channels): channel_sub,
+      sponsor_type='house' (постоянная гарантия неотписки). Бот обязан быть
+      админом в канале — иначе подписку не проверить, такой канал пропускается.
+    • Бот-задания (_STARTER_BOT_TASKS): verify_mode='proof' (ручной скрин).
 
     Возвращает число созданных заданий.
     """
     cfg = get_config()
-    if await count_active_tasks("channel_sub") > 0:
-        return 0  # пул уже живой — ничего не трогаем
-
     from services.sponsors import _to_chat_ref
 
     refs: list[str] = []
@@ -190,12 +217,15 @@ async def seed_starter_tasks(bot: Bot) -> int:
         pass
 
     created = 0
+    # ── Каналы-подписки ──────────────────────────────────────────────────────
     for ref in refs:
         try:
             chat = await bot.get_chat(ref)
         except Exception as e:
             logger.warning(f"[TASKS] starter seed: канал {ref} недоступен: {e}")
             continue
+        if await get_task_by_channel(chat.id):
+            continue  # уже есть задание по этому каналу — не дублируем
         # Бот должен быть админом, чтобы проверять подписки.
         if me is not None:
             try:
@@ -204,14 +234,13 @@ async def seed_starter_tasks(bot: Bot) -> int:
                 status = getattr(status, "value", status)
                 if status not in ("administrator", "creator"):
                     logger.warning(
-                        f"[TASKS] starter seed: бот не админ в {ref} — пропуск"
+                        f"[TASKS] starter seed: бот не админ в {ref} — пропуск "
+                        "(добавь бота админом канала и перезапусти)"
                     )
                     continue
             except Exception as e:
                 logger.warning(f"[TASKS] starter seed: нет прав в {ref}: {e}")
                 continue
-        if await get_task_by_channel(chat.id):
-            continue  # уже есть задание по этому каналу
         username = (chat.username or "").lstrip("@")
         url = f"https://t.me/{username}" if username else ""
         await create_task(
@@ -232,10 +261,36 @@ async def seed_starter_tasks(bot: Bot) -> int:
             guarantee_days=0,
         )
         created += 1
-        logger.info(f"[TASKS] starter seed: создано задание для {ref} (id chat={chat.id})")
+        logger.info(f"[TASKS] starter seed: канал {ref} → задание создано")
+
+    # ── Бот-задания (ручной пруф) ────────────────────────────────────────────
+    for bt in _STARTER_BOT_TASKS:
+        if await get_task_by_url(bt["url"]):
+            continue
+        await create_task(
+            type=bt["type"],
+            title=bt["title"],
+            channel_id=0,
+            channel_username="",
+            url=bt["url"],
+            reward=bt["reward"],
+            revenue_cents=0,
+            daily=0,
+            created_by=cfg.owner_id,
+            sponsor_type="house",
+            advertiser_id=0,
+            anonymous=0,
+            description=bt["description"],
+            target_subs=0,
+            guarantee_days=0,
+            verify_mode="proof",
+            priority=-1,
+        )
+        created += 1
+        logger.info(f"[TASKS] starter seed: бот-задание {bt['url']} → создано")
 
     if created:
-        logger.info(f"[TASKS] стартовый пул заданий засеян: {created} шт.")
+        logger.info(f"[TASKS] стартовый пул заданий: создано {created} новых задани(й/я)")
     return created
 
 

@@ -6,6 +6,22 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+# Постоянные («домашние») каналы владельца для стартового пула заданий-подписок.
+# Бот должен быть админом в каждом из них (иначе подписку не проверить — канал
+# тихо пропускается при сидинге). Переопределяется env STARTER_TASK_CHANNELS.
+DEFAULT_STARTER_CHANNELS = [
+    "https://t.me/best_motivation_music",
+    "https://t.me/best_paradise_music",
+    "https://t.me/ferrator_phonk",
+    "https://t.me/crypto_alt_season",
+    "https://t.me/minecraftnewscis",
+    "https://t.me/best_love_games",
+    "https://t.me/interesting_facts_best",
+    "https://t.me/veseliyvzriv",
+    "https://t.me/kulinarnietainy",
+]
+
+
 @dataclass
 class Config:
     token: str
@@ -96,14 +112,12 @@ class Config:
     # надбавку к лимиту (см. utils.ranks.RANK_PERKS).
     tasks_daily_limit: int = 5
 
-    # Стартовый («домашний») пул заданий: каналы, на которые бот сидит задания
-    # при первом запуске, ЕСЛИ активных заданий-подписок ещё нет. Это оживляет
-    # экономику до прихода первых рекламодателей. Канал бота (sub_gate_channel)
-    # добавляется автоматически. Здесь — дополнительные партнёрские каналы.
-    # Бот ДОЛЖЕН быть админом в каждом канале (иначе подписку не проверить —
-    # такой канал тихо пропускается при сидинге).
-    # Формат env STARTER_TASK_CHANNELS: "@chan1,@chan2,https://t.me/chan3".
-    starter_task_channels: list[str] = field(default_factory=list)  # СЮДА ВСТАВИТЬ партнёрские каналы (через STARTER_TASK_CHANNELS в .env)
+    # Стартовый («домашний») пул заданий-подписок: каналы, на которые бот сидит
+    # задания на старте (постоянные, sponsor_type='house'). Канал бота
+    # (sub_gate_channel) добавляется автоматически. Бот ДОЛЖЕН быть админом в
+    # каждом канале (иначе подписку не проверить — канал тихо пропускается).
+    # Переопределяется env STARTER_TASK_CHANNELS: "@chan1,@chan2,https://t.me/chan3".
+    starter_task_channels: list[str] = field(default_factory=list)
 
     # ── Лесенка стрика: награда растёт за каждую сохранённую подписку ──────────
     # Множитель = 1 + min(streak, cap) × step%. При 10%/cap10 → до ×2.0.
@@ -264,9 +278,10 @@ def load_config() -> Config:
         task_revenue_rub_default=_get_int("TASK_REVENUE_RUB", 4),
         redeem_min=_get_int("REDEEM_MIN", 1000),
         tasks_daily_limit=_get_int("TASKS_DAILY_LIMIT", 5),
-        starter_task_channels=[
-            x.strip() for x in os.getenv("STARTER_TASK_CHANNELS", "").split(",") if x.strip()
-        ],
+        starter_task_channels=(
+            [x.strip() for x in os.getenv("STARTER_TASK_CHANNELS", "").split(",") if x.strip()]
+            or list(DEFAULT_STARTER_CHANNELS)
+        ),
         task_streak_step_pct=_get_int("TASK_STREAK_STEP_PCT", 10),
         task_streak_cap=_get_int("TASK_STREAK_CAP", 10),
         achievement_rank_a_mana=_get_int("ACHIEVEMENT_RANK_A_MANA", 10000),

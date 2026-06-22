@@ -103,6 +103,19 @@ async def get_task_by_channel(channel_id: int) -> Optional[dict]:
     return dict(row) if row else None
 
 
+async def get_task_by_url(url: str) -> Optional[dict]:
+    """Последнее задание по ссылке (любой статус) — для дедупа бот-заданий и
+    прочих заданий без channel_id при повторном сидинге."""
+    if not url:
+        return None
+    db = await get_db()
+    async with db.execute(
+        "SELECT * FROM tasks WHERE url = ? ORDER BY id DESC LIMIT 1", (url,)
+    ) as cur:
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
 async def set_task_active(task_id: int, active: int) -> None:
     db = await get_db()
     await db.execute("UPDATE tasks SET active = ? WHERE id = ?", (active, task_id))
