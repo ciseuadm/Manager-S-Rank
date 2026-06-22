@@ -6,6 +6,56 @@ import re
 from typing import Optional
 
 
+# ── Дедобфускация: ловим маскировку («п0рн0», «х у й», «cyka», «бл*дь») ────────
+# Карта гомоглифов/leetspeak: латиница-двойники и цифры → кириллица. Применяется
+# к нормализованным копиям текста (исходный текст не меняется), чтобы простые
+# обходы фильтра не проходили. Длина сохраняется (посимвольная замена).
+_LEET_MAP = {
+    # цифры/символы → буквы (распространённый leetspeak)
+    "0": "о", "3": "е", "4": "ч", "1": "и", "6": "б", "@": "а", "$": "с",
+    # латиница-двойники → кириллица (только сильные визуальные совпадения,
+    # чтобы не превращать обычные англ. слова в «мат» по ошибке)
+    "a": "а", "c": "с", "e": "е", "o": "о", "p": "р", "x": "х", "y": "у",
+    "k": "к", "m": "м", "t": "т", "h": "н", "b": "в",
+}
+_LEET_TABLE = {ord(k): v for k, v in _LEET_MAP.items()}
+
+# Разделители, которыми растаскивают буквы внутри слова.
+_SEP_RE = re.compile(r"[\s.,_\-*|/\\+~`'\"^:;!?()\[\]{}<>=#№]")
+_REPEAT_RE = re.compile(r"(.)\1{2,}")
+
+# Сильные корни мата/NSFW для проверки по «сжатому» тексту (разделители удалены,
+# повторы схлопнуты). Без \b — текст уже без границ слов; список намеренно
+# консервативный (корни, которые почти не встречаются внутри обычных слов),
+# чтобы не плодить ложные срабатывания. Спорные случаи гасит белый список чата.
+_SQUEEZE_PATTERNS = re.compile(
+    r"("
+    r"пизд|бляд|бля[дبц]|нахуй|похуй|ахуе|охуе|хуйн|хуес|хуйл|"
+    r"пидор|пидар|муда[кч]|долбоеб|далбоеб|еблан|ебало|выеб|заеб|уеб[аои]|"
+    r"порнух|порно|порев|анус|вагин|члено|залуп|дрочи|онанис|"
+    r"проститут|шлюх|сучар|гандон|"
+    r"сдохни|убейся|"
+    r"fuck|porn|sex|xxx|nigger|faggot"
+    r")",
+    re.IGNORECASE | re.UNICODE,
+)
+
+
+def _deobfuscate(text: str) -> str:
+    """Гомоглифы/leet → кириллица + схлопывание длинных повторов (3+ → 2).
+    Структура (пробелы) сохраняется, чтобы \\b-паттерны продолжали работать."""
+    t = text.lower().translate(_LEET_TABLE)
+    return _REPEAT_RE.sub(r"\1\1", t)
+
+
+def _squeeze(text: str) -> str:
+    """Сжатая форма: дедобфускация + удаление разделителей + схлопывание повторов.
+    Ловит «с у к а», «б.л.я.д.ь», «п_о_р_н_о»."""
+    t = text.lower().translate(_LEET_TABLE)
+    t = _SEP_RE.sub("", t)
+    return _REPEAT_RE.sub(r"\1", t)
+
+
 # ── Profanity / Insult word lists ─────────────────────────────────────────────
 
 _NSFW_PATTERNS = re.compile(
@@ -25,6 +75,7 @@ _INSULT_PATTERNS = re.compile(
     r"идиот|тупица|тупой|дебил|дурак|мудак|урод|ублюдок|придурок|"
     r"педик|педо|пидор|гей(?:\s+мразь)?|лох|чмо|ничтожество|"
     r"скотина|животное|свинья|тварь|гандон|ёбаный|бомж|нищеброд|"
+    r"сук[аиуе]|сукой|сучка|сучара|"
     r"retard|loser|moron|idiot|stupid|dumb(?:ass)?|asshole|bastard|"
     r"faggot|nigger|racist|hate\s+you|go\s+die|kill\s+yourself|"
     r"сдохни|иди\s+нахуй|пошёл\s+нахуй|ты\s+дно|мразь|гнида"
@@ -158,23 +209,38 @@ def analyze_message(
         m = (matched or "").lower()
         return m in wl or any(w in m or m in w for w in wl)
 
+    # Дедобфусцированные копии для устойчивости к маскировке (исходный текст
+    # не меняем). \b-паттерны прогоняем по сырому И дедобфусцированному тексту;
+    # «сжатую» форму (без разделителей) проверяем сильными корнями.
+    deobf = _deobfuscate(text)
+    squeezed = _squeeze(text)
+
+    def _check_both(fn) -> Optional[str]:
+        """Запускает проверку по сырому и дедобфусцированному тексту."""
+        return fn(text) or (fn(deobf) if deobf != text else None)
+
     if settings.get("filter_nsfw", 1):
-        match = check_nsfw(text)
+        match = _check_both(check_nsfw)
+        sq = None if match else (
+            _SQUEEZE_PATTERNS.search(squeezed) if squeezed else None
+        )
+        if sq:
+            match = sq.group()
         if match and not _wl_ok(match):
             violations.append(("nsfw", match))
 
     if settings.get("filter_insults", 1):
-        match = check_insult(text)
+        match = _check_both(check_insult)
         if match and not _wl_ok(match):
             violations.append(("insult", match))
 
     if settings.get("filter_politics", 1):
-        match = check_politics(text)
+        match = _check_both(check_politics)
         if match and not _wl_ok(match):
             violations.append(("politics", match))
 
     if settings.get("filter_spam", 1):
-        match = check_spam(text)
+        match = _check_both(check_spam)
         if match and not _wl_ok(match):
             violations.append(("spam", match))
 
@@ -190,7 +256,8 @@ def analyze_message(
         if check_caps(text):
             violations.append(("caps", "CAPS LOCK"))
 
-    match = check_blacklist(text, words)
+    match = check_blacklist(text, words) or check_blacklist(deobf, words) \
+        or check_blacklist(squeezed, words)
     if match:
         violations.append(("blacklist", match))
 

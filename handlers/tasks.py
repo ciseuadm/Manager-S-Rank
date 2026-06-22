@@ -496,10 +496,12 @@ async def cb_redeem(call: CallbackQuery, bot: Bot) -> None:
 
     if sent:
         body = (
-            "🎉 <b>ПОДАРОК ОТПРАВЛЕН!</b>\n\n"
+            f"{ce('celebrate')} <b>ЧУДО СИСТЕМЫ: ПОДАРОК УЖЕ У ТЕБЯ!</b>\n\n"
             f"{offer.emoji} <b>{offer.title}</b> ({offer.subtitle})\n"
-            f"Списано: <b>{format_mana(offer.mana_price)}</b>\n\n"
-            "<i>Проверь профиль Telegram — подарок уже там.</i>"
+            f"{ce('coin')} Списано: <b>{format_mana(offer.mana_price)}</b>\n\n"
+            f"{ce('spark')} Всего пара минут — и добытая руда превратилась в "
+            "<b>настоящий подарок Telegram</b>. Загляни в профиль — он уже там.\n\n"
+            f"<i>{ce('crown')} Это только начало, охотник. Дальше — награды дороже.</i>"
         )
     else:
         body = (

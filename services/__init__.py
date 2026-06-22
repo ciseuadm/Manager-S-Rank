@@ -20,7 +20,7 @@ from .tasks import (
     credit_pending_completion, reject_pending_completion, default_verify_mode,
     request_payout, refund_payout, request_crypto_payout,
     user_streak, streak_multiplier, check_milestones,
-    find_unsubscribed_channels, resubscribe_keyboard,
+    find_unsubscribed_channels, resubscribe_keyboard, seed_starter_tasks,
 )
 from .sponsors import (
     submit_ad_request, approve_ad_request, reject_ad_request, end_sponsorship,
@@ -48,7 +48,7 @@ __all__ = [
     "credit_pending_completion", "reject_pending_completion", "default_verify_mode",
     "request_payout", "refund_payout", "request_crypto_payout",
     "user_streak", "streak_multiplier", "check_milestones",
-    "find_unsubscribed_channels", "resubscribe_keyboard",
+    "find_unsubscribed_channels", "resubscribe_keyboard", "seed_starter_tasks",
     "submit_ad_request", "approve_ad_request", "reject_ad_request", "end_sponsorship",
     "completion_guaranteed", "ad_price_stars", "confirm_ad_payment",
     "is_gate_passed", "send_gate", "gate_keyboard", "GATE_CALLBACK", "GATE_RECHECK_FAIL",

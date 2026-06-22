@@ -91,12 +91,19 @@ class Config:
     task_reward_subscribe: int = 100       # 2 ₽ пользователю при подписке спонсора 3–4 ₽
     task_revenue_rub_default: int = 4      # доход с рекламодателя за подписчика
     redeem_min: int = 1000                 # самый дешёвый подарок (15 ⭐ ≈ 1000 руды)
-    # Час по UTC ежедневной ре-проверки подписок (clawback при отписке).
-    tasks_recheck_hour: int = 3
     # Базовый дневной лимит выполняемых заданий на охотника. Защищает экономику:
     # не платим за бесконечные подписки за день. Высокие ранги (S/SS/SSS) получают
     # надбавку к лимиту (см. utils.ranks.RANK_PERKS).
-    tasks_daily_limit: int = 3
+    tasks_daily_limit: int = 5
+
+    # Стартовый («домашний») пул заданий: каналы, на которые бот сидит задания
+    # при первом запуске, ЕСЛИ активных заданий-подписок ещё нет. Это оживляет
+    # экономику до прихода первых рекламодателей. Канал бота (sub_gate_channel)
+    # добавляется автоматически. Здесь — дополнительные партнёрские каналы.
+    # Бот ДОЛЖЕН быть админом в каждом канале (иначе подписку не проверить —
+    # такой канал тихо пропускается при сидинге).
+    # Формат env STARTER_TASK_CHANNELS: "@chan1,@chan2,https://t.me/chan3".
+    starter_task_channels: list[str] = field(default_factory=list)  # СЮДА ВСТАВИТЬ партнёрские каналы (через STARTER_TASK_CHANNELS в .env)
 
     # ── Лесенка стрика: награда растёт за каждую сохранённую подписку ──────────
     # Множитель = 1 + min(streak, cap) × step%. При 10%/cap10 → до ×2.0.
@@ -256,8 +263,10 @@ def load_config() -> Config:
         task_reward_subscribe=_get_int("TASK_REWARD_SUBSCRIBE", 100),
         task_revenue_rub_default=_get_int("TASK_REVENUE_RUB", 4),
         redeem_min=_get_int("REDEEM_MIN", 1000),
-        tasks_recheck_hour=_get_int("TASKS_RECHECK_HOUR", 3),
-        tasks_daily_limit=_get_int("TASKS_DAILY_LIMIT", 3),
+        tasks_daily_limit=_get_int("TASKS_DAILY_LIMIT", 5),
+        starter_task_channels=[
+            x.strip() for x in os.getenv("STARTER_TASK_CHANNELS", "").split(",") if x.strip()
+        ],
         task_streak_step_pct=_get_int("TASK_STREAK_STEP_PCT", 10),
         task_streak_cap=_get_int("TASK_STREAK_CAP", 10),
         achievement_rank_a_mana=_get_int("ACHIEVEMENT_RANK_A_MANA", 10000),

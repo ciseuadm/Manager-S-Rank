@@ -1,7 +1,7 @@
 """
 Tasks business logic — платные задания (подписки на каналы), начисление руды
-на ЕДИНЫЙ баланс, ежедневная ре-проверка подписок с clawback и обмен руды
-на подарки через payout-запросы.
+на ЕДИНЫЙ баланс, ленивая ре-проверка подписок (мягкий гейт при попытке взять
+следующее задание, без штрафов) и обмен руды на подарки через payout-запросы.
 
 Баланс один (wallets.mana): и бесплатная добыча, и задания идут в него.
 Маржу держим двумя рычагами:
@@ -24,7 +24,7 @@ from database import (
     award_achievement_capped, count_achievement,
     get_user_channel_task_completions, count_user_completions_today,
     get_completion_by_id, set_completion_status, has_pending_completion,
-    payout_sum_today,
+    payout_sum_today, count_active_tasks, get_task_by_channel, create_task,
 )
 from utils import (
     get_config, calculate_rank, rank_reward_multiplier,
@@ -157,6 +157,86 @@ def effective_daily_limit(rank: str = "") -> int:
     """Дневной лимит заданий — ЕДИНЫЙ для всех рангов (макс. 3/день по умолчанию).
     Параметр rank оставлен для совместимости вызовов и не влияет на результат."""
     return get_config().tasks_daily_limit
+
+
+async def seed_starter_tasks(bot: Bot) -> int:
+    """
+    Стартовый («домашний») пул заданий-подписок, чтобы экономика жила с первого
+    дня — до прихода рекламодателей. Идемпотентно: запускается на старте бота и
+    создаёт задания ТОЛЬКО если активных заданий-подписок ещё нет.
+
+    Каналы: канал бота (sub_gate_channel) + config.starter_task_channels.
+    Бот обязан быть админом в канале (иначе подписку не проверить) — такие
+    каналы тихо пропускаются. Дубли по channel_id не создаются.
+
+    Возвращает число созданных заданий.
+    """
+    cfg = get_config()
+    if await count_active_tasks("channel_sub") > 0:
+        return 0  # пул уже живой — ничего не трогаем
+
+    from services.sponsors import _to_chat_ref
+
+    refs: list[str] = []
+    for raw in [cfg.sub_gate_channel, *cfg.starter_task_channels]:
+        ref = _to_chat_ref(raw)
+        if ref and ref not in refs:
+            refs.append(ref)
+
+    me = None
+    try:
+        me = await bot.get_me()
+    except Exception:
+        pass
+
+    created = 0
+    for ref in refs:
+        try:
+            chat = await bot.get_chat(ref)
+        except Exception as e:
+            logger.warning(f"[TASKS] starter seed: канал {ref} недоступен: {e}")
+            continue
+        # Бот должен быть админом, чтобы проверять подписки.
+        if me is not None:
+            try:
+                member = await bot.get_chat_member(chat.id, me.id)
+                status = getattr(member, "status", None)
+                status = getattr(status, "value", status)
+                if status not in ("administrator", "creator"):
+                    logger.warning(
+                        f"[TASKS] starter seed: бот не админ в {ref} — пропуск"
+                    )
+                    continue
+            except Exception as e:
+                logger.warning(f"[TASKS] starter seed: нет прав в {ref}: {e}")
+                continue
+        if await get_task_by_channel(chat.id):
+            continue  # уже есть задание по этому каналу
+        username = (chat.username or "").lstrip("@")
+        url = f"https://t.me/{username}" if username else ""
+        await create_task(
+            type="channel_sub",
+            title=chat.title or "Канал гильдии",
+            channel_id=chat.id,
+            channel_username=username,
+            url=url,
+            reward=cfg.task_reward_subscribe,
+            revenue_cents=0,
+            daily=0,
+            created_by=cfg.owner_id,
+            sponsor_type="house",
+            advertiser_id=0,
+            anonymous=0,
+            description="Канал гильдии Системы",
+            target_subs=0,
+            guarantee_days=0,
+        )
+        created += 1
+        logger.info(f"[TASKS] starter seed: создано задание для {ref} (id chat={chat.id})")
+
+    if created:
+        logger.info(f"[TASKS] стартовый пул заданий засеян: {created} шт.")
+    return created
 
 
 async def list_available_tasks(user_id: int) -> list[dict]:

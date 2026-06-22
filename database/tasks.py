@@ -77,6 +77,32 @@ async def list_tasks(limit: int = 50) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+async def count_active_tasks(type: Optional[str] = None) -> int:
+    """Сколько активных заданий в пуле (для сидинга стартового пула)."""
+    db = await get_db()
+    if type:
+        sql = "SELECT COUNT(*) AS c FROM tasks WHERE active = 1 AND type = ?"
+        args: tuple = (type,)
+    else:
+        sql = "SELECT COUNT(*) AS c FROM tasks WHERE active = 1"
+        args = ()
+    async with db.execute(sql, args) as cur:
+        row = await cur.fetchone()
+    return row["c"] if row else 0
+
+
+async def get_task_by_channel(channel_id: int) -> Optional[dict]:
+    """Последнее задание по каналу (любой статус) — чтобы не плодить дубли при
+    повторном сидинге стартового пула."""
+    db = await get_db()
+    async with db.execute(
+        "SELECT * FROM tasks WHERE channel_id = ? ORDER BY id DESC LIMIT 1",
+        (channel_id,),
+    ) as cur:
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
 async def set_task_active(task_id: int, active: int) -> None:
     db = await get_db()
     await db.execute("UPDATE tasks SET active = ? WHERE id = ?", (active, task_id))

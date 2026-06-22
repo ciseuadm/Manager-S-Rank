@@ -59,7 +59,7 @@ from .social import (
 )
 from .tasks import (
     create_task, get_task, get_active_tasks, list_tasks, set_task_active,
-    set_task_priority,
+    set_task_priority, count_active_tasks, get_task_by_channel,
     task_completions_count, get_completion, get_completed_task_ids,
     count_user_credited_subs, count_user_completions_today,
     record_completion, get_credited_channel_completions, mark_completion_reverted,
@@ -121,7 +121,7 @@ __all__ = [
     "get_marriage", "create_marriage", "divorce",
     # tasks
     "create_task", "get_task", "get_active_tasks", "list_tasks", "set_task_active",
-    "set_task_priority",
+    "set_task_priority", "count_active_tasks", "get_task_by_channel",
     "task_completions_count", "get_completion", "get_completed_task_ids",
     "count_user_credited_subs", "count_user_completions_today",
     "record_completion", "get_credited_channel_completions", "mark_completion_reverted",

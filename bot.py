@@ -73,6 +73,7 @@ BANNER = r"""
 # хендлеры остаются рабочими (кто знает — наберёт), всё важное есть в /menu.
 PUBLIC_COMMANDS = [
     BotCommand(command="rank", description="🏆 Моя карточка охотника"),
+    BotCommand(command="report", description="🛡 Пожаловаться на сообщение (ответом)"),
     BotCommand(command="top", description="📊 Топ охотников чата"),
     BotCommand(command="dungeon", description="🏰 Подземелье: до 50 руды/день"),
     BotCommand(command="daily", description="🎁 Ежедневный бонус опыта"),
@@ -215,6 +216,14 @@ async def on_startup(bot: Bot, config) -> None:
         await setup_commands(bot, config.owner_id)
     except Exception as e:
         logger.warning(f"set_my_commands error: {e}")
+
+    # Стартовый пул заданий: если рекламодателей ещё нет, экономика не должна
+    # быть мёртвой — сидим «домашние» задания (канал бота + партнёрские).
+    try:
+        from services import seed_starter_tasks
+        await seed_starter_tasks(bot)
+    except Exception as e:
+        logger.warning(f"starter tasks seed error: {e}")
 
     # Кнопка-меню рядом с полем ввода в ЛС: открывает Mini App, если задан
     # публичный https-адрес (требование Telegram для web_app).
