@@ -475,7 +475,9 @@ async def cmd_broadcast(message: Message, bot: Bot) -> None:
         )
         return
 
-    chats = await get_all_chats()
+    # Каналы исключаем: бот может быть в них админом только как цель задания —
+    # постить туда нельзя.
+    chats = [c for c in await get_all_chats() if (c.get("chat_type") or "") != "channel"]
     if not chats:
         await message.answer("💬 Нет чатов для рассылки.")
         return

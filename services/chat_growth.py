@@ -9,7 +9,7 @@ from aiogram import Bot
 from aiogram.types import ChatMemberUpdated
 from loguru import logger
 
-from database import set_chat_title, remove_chat
+from database import set_chat_title, remove_chat, update_chat_setting
 from utils import BOT_ADDED_WELCOME, BOT_NEEDS_ADMIN_MSG
 
 # Статусы, означающие, что участник присутствует в чате.
@@ -49,10 +49,12 @@ async def handle_bot_membership(bot: Bot, event: ChatMemberUpdated) -> None:
 
     if became_present:
         await set_chat_title(chat.id, title)
+        await update_chat_setting(chat.id, "chat_type", chat.type)
         await _send_chat(bot, chat.id, BOT_ADDED_WELCOME if is_admin_now else BOT_NEEDS_ADMIN_MSG)
         return
 
     # Повышение до админа уже присутствующего бота — поприветствуем один раз.
     if is_admin_now and old != "administrator":
         await set_chat_title(chat.id, title)
+        await update_chat_setting(chat.id, "chat_type", chat.type)
         await _send_chat(bot, chat.id, BOT_ADDED_WELCOME)

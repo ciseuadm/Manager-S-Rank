@@ -15,6 +15,7 @@ from loguru import logger
 from database import (
     get_active_campaigns, get_campaign, get_all_chats, get_chat_settings,
     impressions_today, log_impression, mark_campaign_sent,
+    update_chat_setting, remove_chat,
 )
 from services.broadcaster import broadcast
 from utils import get_config, ce, strip_custom_emoji
@@ -52,11 +53,39 @@ async def _deliver(bot: Bot, chat_id: int, camp: dict, *, is_channel: bool = Fal
                                disable_web_page_preview=False)
 
 
-async def _eligible_chats(cfg) -> list[int]:
-    """Chats that allow ads and haven't hit their daily cap yet."""
+async def _eligible_chats(bot: Bot, cfg) -> list[int]:
+    """Чаты для рекламы: только группы/супергруппы (НИКОГДА не каналы), с
+    включённой рекламой и не достигшие дневного лимита.
+
+    Тип чата кэшируется в chat_settings.chat_type. Для старых записей с пустым
+    типом определяем его один раз через get_chat и сохраняем; каналы при этом
+    вычищаются из списка (бот может быть в них только как цель задания-подписки).
+    """
     out = []
     for c in await get_all_chats():
         cid = c["chat_id"]
+        ctype = (c.get("chat_type") or "").strip()
+
+        if ctype == "channel":
+            continue  # в каналы не шлём никогда
+        if not ctype:
+            # Legacy/неизвестно — определяем один раз и сохраняем.
+            try:
+                chat = await bot.get_chat(cid)
+                ctype = chat.type or ""
+                await update_chat_setting(cid, "chat_type", ctype)
+            except Exception as e:
+                logger.warning(f"[ADS] не определил тип чата {cid}, пропуск: {e}")
+                continue  # осторожно: не рискуем постить в возможный канал
+            if ctype == "channel":
+                # Канал случайно попал в список (бот там админ как цель задания) —
+                # убираем из БД чатов, чтобы реклама туда не уходила.
+                await remove_chat(cid)
+                logger.info(f"[ADS] канал {cid} убран из списка чатов (реклама не шлётся)")
+                continue
+        if ctype not in ("group", "supergroup"):
+            continue
+
         s = await get_chat_settings(cid)
         if not s.get("ads_enabled", 1):
             continue
@@ -86,7 +115,7 @@ async def send_campaign(bot: Bot, camp: dict) -> dict:
         await mark_campaign_sent(camp["id"], today)
         return result
 
-    chats = await _eligible_chats(cfg)
+    chats = await _eligible_chats(bot, cfg)
 
     async def send_fn(b: Bot, cid: int, camp=camp) -> None:
         await _deliver(b, cid, camp)

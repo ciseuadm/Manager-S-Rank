@@ -445,7 +445,7 @@ async def get_chat_activity_summary(chat_id: int, days: int = 7) -> dict:
 async def get_all_chats() -> list[dict]:
     db = await get_db()
     async with db.execute(
-        "SELECT chat_id, title, ads_enabled FROM chat_settings ORDER BY created_at DESC"
+        "SELECT chat_id, title, ads_enabled, chat_type FROM chat_settings ORDER BY created_at DESC"
     ) as cur:
         rows = await cur.fetchall()
     return [dict(r) for r in rows]

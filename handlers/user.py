@@ -11,7 +11,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.filters.chat_member_updated import ChatMemberUpdatedFilter, JOIN_TRANSITION
 
 from database import (
-    get_or_create_user, get_chat_settings, set_chat_title,
+    get_or_create_user, get_chat_settings, set_chat_title, update_chat_setting,
     get_top_users, get_chat_stats, claim_daily,
     get_top_inviters, get_wallet_rank,
 )
@@ -551,6 +551,12 @@ async def cb_welcome_rules(call: CallbackQuery) -> None:
 
 @router.chat_member(ChatMemberUpdatedFilter(JOIN_TRANSITION))
 async def on_new_member(event: ChatMemberUpdated) -> None:
+    # ВАЖНО: только группы/супергруппы. В КАНАЛАХ бот-админ тоже получает
+    # chat_member-апдейты о подписчиках — но канал это не чат-гильдия: ничего
+    # туда не постим и не регистрируем (иначе бот «пишет» в канал и канал
+    # попадёт в рассылки). Каналы — только как ЦЕЛИ заданий-подписок.
+    if event.chat.type not in ("group", "supergroup"):
+        return
     user = event.new_chat_member.user
     if user.is_bot:
         return
@@ -565,6 +571,7 @@ async def on_new_member(event: ChatMemberUpdated) -> None:
         logger.warning(f"[GUARD] screen error in {event.chat.id}: {e}")
 
     await set_chat_title(event.chat.id, event.chat.title or "")
+    await update_chat_setting(event.chat.id, "chat_type", event.chat.type)
     db_user = await get_or_create_user(
         user.id, event.chat.id,
         username=user.username or "",
