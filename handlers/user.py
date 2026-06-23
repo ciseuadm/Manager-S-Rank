@@ -29,6 +29,7 @@ from utils import (
     DUNGEON_AD_HINT, DUNGEON_CLAIMED_MSG, DUNGEON_TOPUP_MSG, DUNGEON_DONE_MSG,
     DUNGEON_MILESTONE_MSG, DUNGEON_PRIVATE_MSG,
     EARN_MSG, format_mana, get_config,
+    ADVERTISER_OFFER_POST, PARTNER_AUTOVERIFY_POST,
 )
 from utils.media import answer_with_banner
 
@@ -61,9 +62,19 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot) -> None:
             await send_gate(message)
             return
 
-    # Маркетинговый «крючок» из приветствия: t.me/bot?start=earn
+    # Маркетинговые deep-link «крючки» из постов/кнопок:
+    #   ?start=earn — как зарабатывать; ?start=advertise — заказать рекламу;
+    #   ?start=adinfo — как работает авто-проверка (для партнёров/рекламодателей).
     if payload == "earn":
         banner, text = "earn", EARN_MSG
+    elif payload == "advertise":
+        banner = "ads_offer"
+        text = (
+            ADVERTISER_OFFER_POST
+            + "\n\n📨 <b>Подать заявку:</b> отправь команду /advertise — займёт 1 минуту."
+        )
+    elif payload == "adinfo":
+        banner, text = "partner", PARTNER_AUTOVERIFY_POST
     else:
         banner, text = "start", START_MSG
     # В личке сразу даём кнопку в кнопочное меню — без заучивания команд.

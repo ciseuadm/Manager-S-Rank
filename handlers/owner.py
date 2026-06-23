@@ -47,28 +47,69 @@ router.callback_query.filter(IsOwnerCb())
 
 # ── Маркетинг-набор: готовые посты владельцу ─────────────────────────────────
 
+def _promo_kit() -> list[tuple[str, str, object]]:
+    """Готовые посты владельцу: (banner_key, текст, клавиатура с кнопками).
+
+    Кнопки — deep-link на бота: действия и подробная инфа живут в них, поэтому
+    сам пост короткий и влезает в подпись к баннеру. Работают и при пересылке.
+    """
+    uname = (get_config().bot_username or "").lstrip("@")
+
+    def btn(text: str, payload: str = "") -> InlineKeyboardButton:
+        url = f"https://t.me/{uname}" + (f"?start={payload}" if payload else "")
+        return InlineKeyboardButton(text=text, url=url)
+
+    # Запуск: добавить бота в чат + открыть бота.
+    launch_kb = InlineKeyboardBuilder()
+    if uname:
+        launch_kb.row(InlineKeyboardButton(
+            text="➕ Добавить бота в свой чат",
+            url=f"https://t.me/{uname}?startgroup=true",
+        ))
+        launch_kb.row(btn("⚡ Открыть Систему"))
+
+    # Рефералка: забрать ссылку (ведёт на экран «как зарабатывать»).
+    ref_kb = InlineKeyboardBuilder()
+    if uname:
+        ref_kb.row(btn("🕴 Стать Агентом — забрать ссылку", "earn"))
+
+    # Оффер рекламодателю: запустить рекламу + как работает авто-проверка.
+    ads_kb = InlineKeyboardBuilder()
+    if uname:
+        ads_kb.row(btn("🚀 Запустить рекламу", "advertise"))
+        ads_kb.row(btn("🔌 Как работает авто-проверка", "adinfo"))
+
+    # Авто-проверка (партнёрам): запустить рекламу + памятка.
+    partner_kb = InlineKeyboardBuilder()
+    if uname:
+        partner_kb.row(btn("🚀 Запустить рекламу", "advertise"))
+        partner_kb.row(btn("🤝 Памятка партнёру", "adinfo"))
+
+    return [
+        ("start", ANNOUNCE_LAUNCH, launch_kb.as_markup()),
+        ("earn", ANNOUNCE_REFERRAL, ref_kb.as_markup()),
+        ("ads_offer", ADVERTISER_OFFER_POST, ads_kb.as_markup()),
+        ("partner", PARTNER_AUTOVERIFY_POST, partner_kb.as_markup()),
+    ]
+
+
 @router.message(Command("promo", "posts", "promoposts"))
 async def cmd_promo(message: Message) -> None:
-    """Присылает владельцу готовые оформленные посты (баннер + премиум-эмодзи):
-    анонс запуска, доход с друзей, оффер рекламодателям, авто-проверка партнёрам.
-    Их можно публиковать в канале или пересылать как есть."""
+    """Присылает владельцу готовые оформленные посты (баннер + премиум-эмодзи +
+    кнопки): анонс запуска, доход с друзей, оффер рекламодателям, авто-проверка
+    партнёрам. Их можно публиковать в канале или пересылать как есть."""
     await message.answer(
         f"{ce('rocket')} <b>МАРКЕТИНГ-НАБОР</b>\n\n"
-        "Ниже — готовые посты в фирменном стиле. Можешь публиковать в канале "
-        "(<code>/announce</code>), пересылать рекламодателям или закреплять.\n"
-        f"<i>{ce('spark')} Премиум-эмодзи показываются, если у тебя активен "
-        "Telegram Premium; в каналах Telegram заменит их на обычные — это норма.</i>",
+        "Ниже — готовые посты в фирменном стиле, с баннерами и кнопками. "
+        "Публикуй в канале (<code>/announce</code>), пересылай рекламодателям "
+        "или закрепляй.\n"
+        f"<i>{ce('spark')} Премиум-эмодзи видны при активном Telegram Premium; "
+        "в каналах Telegram заменит их на обычные — это норма.</i>",
         parse_mode="HTML",
     )
-    posts = [
-        ("start", ANNOUNCE_LAUNCH),
-        ("earn", ANNOUNCE_REFERRAL),
-        ("ads_offer", ADVERTISER_OFFER_POST),
-        ("partner", PARTNER_AUTOVERIFY_POST),
-    ]
-    for key, text in posts:
+    for key, text, markup in _promo_kit():
         try:
-            await answer_with_banner(message, key, text)
+            await answer_with_banner(message, key, text, reply_markup=markup)
         except Exception as e:
             logger.warning(f"[PROMO] post {key} failed: {e}")
         await asyncio.sleep(0.4)
