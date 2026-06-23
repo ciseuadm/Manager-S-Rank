@@ -147,6 +147,47 @@ HUBS: dict[str, dict] = {
 }
 
 
+# Короткие тизеры для рассылки в чаты/ЛС: текст + кнопка «Открыть», которая
+# ведёт в личку бота и разворачивает полный интерактивный хаб у каждого свой.
+TEASERS: dict[str, str] = {
+    "play": (
+        f"{ce('spark')} <b>Бот навёл порядок и превратил чат в игру!</b>\n"
+        "Ранги, Мана-руда, задания, подземелья — и настоящие Telegram-подарки "
+        "за активность.\n"
+        f"{ce('rocket')} Жми «Открыть» — узнай, как начать зарабатывать."
+    ),
+    "agent": (
+        f"{ce('coin')} <b>Зарабатывай, приглашая друзей!</b>\n"
+        "Система платит рудой за каждое повышение ранга твоих рекрутов, а руду "
+        "меняешь на Telegram-подарки.\n"
+        f"{ce('rocket')} Жми «Открыть» — забери свою ссылку."
+    ),
+    "ads": (
+        f"{ce('megaphone')} <b>Нужны живые подписчики на канал?</b>\n"
+        "Реальные игроки подписываются сами. Оплата за результат, гарантия от "
+        "отписки, деньги в эскроу.\n"
+        f"{ce('rocket')} Жми «Открыть» — условия и заказ за 2 минуты."
+    ),
+}
+
+_HUB_LABELS = {"play": "Что умеет бот", "agent": "Доход с друзей", "ads": "Оффер рекламодателю"}
+
+
+def hub_share_link(hub_id: str) -> str:
+    uname = _u()
+    return f"https://t.me/{uname}?start={hub_id}" if uname else ""
+
+
+def hub_teaser(hub_id: str):
+    """Тизер (text, markup) для рассылки: кнопка «Открыть» ведёт в хаб в личке."""
+    text = TEASERS.get(hub_id, "")
+    b = InlineKeyboardBuilder()
+    link = hub_share_link(hub_id)
+    if link:
+        b.row(InlineKeyboardButton(text="📖 Открыть", url=link))
+    return text, b.as_markup()
+
+
 def _personal_link_text(user_id: int) -> str:
     uname = _u()
     link = f"https://t.me/{uname}?start=ref_{user_id}" if uname else "—"
@@ -246,3 +287,73 @@ async def cmd_promo(message: Message) -> None:
         except Exception as e:
             logger.warning(f"[PROMO] hub {hub_id} failed: {e}")
         await asyncio.sleep(0.4)
+
+    # Шеринг-ссылки: их можно слать людям в ЛС/группы/канал — у каждого откроется
+    # свой интерактивный хаб (кнопки работают). Это лучше пересылки самого поста.
+    links = "\n".join(
+        f"{ce('link')} <b>{_HUB_LABELS[h]}:</b>\n<code>{escape_html(hub_share_link(h))}</code>"
+        for h in ("play", "agent", "ads")
+    )
+    await message.answer(
+        f"{ce('link')} <b>ССЫЛКИ ДЛЯ РАСПРОСТРАНЕНИЯ</b>\n\n"
+        "Кидай эти ссылки людям в ЛС, в группы или в канал — по тапу у каждого "
+        "откроется полный интерактивный пост с рабочими кнопками:\n\n"
+        f"{links}\n\n"
+        f"{ce('megaphone')} Разослать тизер во все свои чаты сразу: /promosend",
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
+
+
+# ── /promosend — разослать тизер с кнопкой «Открыть» во все чаты бота ──────────
+
+@router.message(Command("promosend"), F.chat.type == "private")
+async def cmd_promosend(message: Message) -> None:
+    if not is_owner(message.from_user.id):
+        return
+    b = InlineKeyboardBuilder()
+    for h in ("play", "agent", "ads"):
+        b.row(InlineKeyboardButton(text=f"📢 {_HUB_LABELS[h]}", callback_data=f"promosend:{h}"))
+    await message.answer(
+        f"{ce('megaphone')} <b>РАССЫЛКА ТИЗЕРА В ЧАТЫ</b>\n\n"
+        "Выбери пост — бот отправит во все группы, где он есть, короткий тизер "
+        "с кнопкой «Открыть» (она ведёт в личку, где у каждого свой интерактивный "
+        "пост). В каналы не шлём.",
+        parse_mode="HTML",
+        reply_markup=b.as_markup(),
+    )
+
+
+@router.callback_query(F.data.startswith("promosend:"))
+async def cb_promosend(call: CallbackQuery, bot) -> None:
+    if not is_owner(call.from_user.id):
+        await call.answer("Только владелец.", show_alert=True)
+        return
+    hub_id = call.data.split(":", 1)[1]
+    if hub_id not in HUBS:
+        await call.answer()
+        return
+    from database import get_all_chats
+    from services import broadcast
+
+    text, markup = hub_teaser(hub_id)
+    chats = [
+        c["chat_id"] for c in await get_all_chats()
+        if (c.get("chat_type") or "") != "channel"
+    ]
+    await call.answer("Рассылаю…")
+    if not chats:
+        await call.message.answer("💬 Нет чатов для рассылки.")
+        return
+
+    async def _send(b, cid: int) -> None:
+        await b.send_message(cid, text, parse_mode="HTML", reply_markup=markup,
+                             disable_web_page_preview=True)
+
+    result = await broadcast(bot, chats, _send)
+    await call.message.answer(
+        f"✅ <b>Тизер «{_HUB_LABELS[hub_id]}» разослан.</b>\n"
+        f"Доставлено: <b>{result['sent']}</b> · ошибок: <b>{result['failed']}</b>"
+        + (f" · удалено мёртвых: {result['removed']}" if result.get("removed") else ""),
+        parse_mode="HTML",
+    )

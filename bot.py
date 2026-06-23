@@ -146,6 +146,7 @@ OWNER_COMMANDS = PRIVATE_COMMANDS + [
     BotCommand(command="metrics", description="📈 Дашборд роста (DAU/k-factor/ARPU)"),
     BotCommand(command="announce", description="📣 Пост в канал бота"),
     BotCommand(command="promo", description="📦 Готовые маркетинг-посты мне в личку"),
+    BotCommand(command="promosend", description="📢 Разослать тизер во все чаты"),
     BotCommand(command="chats", description="💬 Список чатов"),
     BotCommand(command="broadcast", description="📢 Рассылка"),
     BotCommand(command="newad", description="📢 Новая рекламная кампания"),
