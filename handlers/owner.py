@@ -66,7 +66,7 @@ def _promo_kit() -> list[tuple[str, str, object]]:
             text="➕ Добавить бота в свой чат",
             url=f"https://t.me/{uname}?startgroup=true",
         ))
-        launch_kb.row(btn("⚡ Открыть Систему"))
+        launch_kb.row(btn("⚡ Открыть Систему", "menu"))
 
     # Рефералка: забрать ссылку (ведёт на экран «как зарабатывать»).
     ref_kb = InlineKeyboardBuilder()
@@ -406,7 +406,7 @@ def _announce_kit(kind: str, cfg) -> tuple[str, object]:
                 text="➕ Добавить бота в свой чат",
                 url=f"https://t.me/{uname}?startgroup=true",
             ))
-            kb.row(InlineKeyboardButton(text="⚡ Открыть бота", url=f"https://t.me/{uname}"))
+            kb.row(InlineKeyboardButton(text="⚡ Открыть бота", url=f"https://t.me/{uname}?start=menu"))
         return strip_custom_emoji(ANNOUNCE_LAUNCH), kb.as_markup()
     # ref
     if uname:

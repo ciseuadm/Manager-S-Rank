@@ -62,9 +62,15 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot) -> None:
             await send_gate(message)
             return
 
-    # Маркетинговые deep-link «крючки» из постов/кнопок:
+    # Deep-link «крючки» из постов/кнопок — открывают сразу нужный экран:
     #   ?start=earn — как зарабатывать; ?start=advertise — заказать рекламу;
-    #   ?start=adinfo — как работает авто-проверка (для партнёров/рекламодателей).
+    #   ?start=adinfo — как работает авто-проверка; ?start=buy — пакеты руды;
+    #   ?start=menu (и любой другой) — главное меню.
+    if payload == "buy" and message.chat.type == "private":
+        from handlers.payments import cmd_buy
+        await cmd_buy(message)
+        return
+
     if payload == "earn":
         banner, text = "earn", EARN_MSG
     elif payload == "advertise":
