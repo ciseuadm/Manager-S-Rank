@@ -16,12 +16,13 @@ from .chat_lifecycle import router as chat_lifecycle_router
 from .triggers import router as triggers_router
 from .social import router as social_router
 from .pro import router as pro_router
+from .promo import router as promo_router
 
 __all__ = [
     "moderation_router", "admin_router", "user_router", "settings_router",
     "owner_router", "economy_router", "referral_router", "payments_router",
     "ads_router", "sponsors_router", "tasks_router", "cursor_router", "fun_router",
     "menu_router", "chat_lifecycle_router", "triggers_router", "social_router",
-    "pro_router",
+    "pro_router", "promo_router",
     "set_bot_id",
 ]

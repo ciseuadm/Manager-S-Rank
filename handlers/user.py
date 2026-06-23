@@ -29,7 +29,6 @@ from utils import (
     DUNGEON_AD_HINT, DUNGEON_CLAIMED_MSG, DUNGEON_TOPUP_MSG, DUNGEON_DONE_MSG,
     DUNGEON_MILESTONE_MSG, DUNGEON_PRIVATE_MSG,
     EARN_MSG, format_mana, get_config,
-    ADVERTISER_OFFER_POST, PARTNER_AUTOVERIFY_POST,
 )
 from utils.media import answer_with_banner
 
@@ -63,26 +62,25 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot) -> None:
             return
 
     # Deep-link «крючки» из постов/кнопок — открывают сразу нужный экран:
-    #   ?start=earn — как зарабатывать; ?start=advertise — заказать рекламу;
-    #   ?start=adinfo — как работает авто-проверка; ?start=buy — пакеты руды;
-    #   ?start=menu (и любой другой) — главное меню.
-    if payload == "buy" and message.chat.type == "private":
-        from handlers.payments import cmd_buy
-        await cmd_buy(message)
-        return
+    #   ?start=buy — пакеты руды; ?start=earn — рефералка; ?start=advertise/adinfo
+    #   — оффер рекламодателю; ?start=play — что умеет бот; иначе — главное меню.
+    if message.chat.type == "private":
+        if payload == "buy":
+            from handlers.payments import cmd_buy
+            await cmd_buy(message)
+            return
+        _HUB = {"earn": "agent", "agent": "agent", "advertise": "ads",
+                "adinfo": "ads", "ads": "ads", "play": "play"}
+        if payload in _HUB:
+            from handlers.promo import send_hub
+            await send_hub(message, _HUB[payload])
+            return
+        if payload == "earn_old":  # на случай старых ссылок — экран EARN
+            banner, text = "earn", EARN_MSG
+            await answer_with_banner(message, banner, text)
+            return
 
-    if payload == "earn":
-        banner, text = "earn", EARN_MSG
-    elif payload == "advertise":
-        banner = "ads_offer"
-        text = (
-            ADVERTISER_OFFER_POST
-            + "\n\n📨 <b>Подать заявку:</b> отправь команду /advertise — займёт 1 минуту."
-        )
-    elif payload == "adinfo":
-        banner, text = "partner", PARTNER_AUTOVERIFY_POST
-    else:
-        banner, text = "start", START_MSG
+    banner, text = "start", START_MSG
     # В личке сразу даём кнопку в кнопочное меню — без заучивания команд.
     markup = None
     if message.chat.type == "private":

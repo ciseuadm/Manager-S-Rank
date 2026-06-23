@@ -26,7 +26,7 @@ from handlers import (
     owner_router, economy_router, referral_router, payments_router,
     ads_router, sponsors_router, tasks_router, cursor_router, fun_router,
     menu_router, chat_lifecycle_router, triggers_router, social_router,
-    pro_router,
+    pro_router, promo_router,
     set_bot_id,
 )
 from services.cursor_bridge import bridge as cursor_bridge
@@ -316,6 +316,7 @@ async def main() -> None:
     dp.include_router(owner_router)
     dp.include_router(chat_lifecycle_router)
     dp.include_router(menu_router)
+    dp.include_router(promo_router)
     dp.include_router(tasks_router)
     dp.include_router(sponsors_router)
     dp.include_router(ads_router)
