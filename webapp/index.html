@@ -72,6 +72,46 @@
   .skel{height:80px;border-radius:16px;background:linear-gradient(90deg,#181a2b,#23263f,#181a2b);
     background-size:200% 100%;animation:sk 1.2s infinite;margin-bottom:10px}
   @keyframes sk{0%{background-position:200% 0}100%{background-position:-200% 0}}
+  /* ── Витрина подарков (как нативная панель TG, но в руде) ── */
+  .shop-hero{background:radial-gradient(120% 120% at 0% 0%,#2a1d5a,#10233a 70%);
+    border:1px solid #2c2f52;border-radius:20px;padding:16px 18px;margin:4px 0 12px}
+  .sh-t{font-size:18px;font-weight:900}
+  .sh-s{font-size:12.5px;color:var(--hint);margin-top:4px;line-height:1.45}
+  .cats{display:flex;gap:8px;margin:0 2px 12px;overflow-x:auto;-ms-overflow-style:none;scrollbar-width:none}
+  .cats::-webkit-scrollbar{display:none}
+  .cat{flex:0 0 auto;padding:7px 16px;border-radius:20px;background:var(--card);
+    color:var(--hint);font-size:13px;font-weight:700;cursor:pointer;border:1px solid #2c2f52}
+  .cat.active{background:var(--accent);color:#fff;border-color:transparent}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .gcard{position:relative;background:var(--card);border:1px solid #2c2f52;border-radius:18px;
+    padding:16px 8px 12px;text-align:center;cursor:pointer;transition:transform .08s,border-color .15s}
+  .gcard:active{transform:scale(.95)}
+  .gcard.locked{opacity:.5}
+  .gcard .gem2{font-size:42px;line-height:1;filter:drop-shadow(0 6px 12px #0007)}
+  .gcard .gtt{font-size:12px;margin-top:9px;font-weight:700}
+  .price{display:inline-flex;align-items:center;gap:3px;margin-top:9px;
+    background:#0000004d;border-radius:20px;padding:4px 11px;font-size:12px;font-weight:900;color:#ffd76a}
+  .badge{position:absolute;top:8px;right:8px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    font-size:9px;font-weight:900;letter-spacing:.3px;padding:3px 7px;border-radius:9px;color:#fff}
+  /* нижняя «шторка» подтверждения обмена */
+  .sheet-bg{position:fixed;inset:0;background:#000b;opacity:0;pointer-events:none;
+    transition:.2s;z-index:30}
+  .sheet-bg.show{opacity:1;pointer-events:auto}
+  .sheet{position:fixed;left:0;right:0;bottom:0;max-width:560px;margin:0 auto;z-index:31;
+    background:var(--card);border-radius:26px 26px 0 0;border-top:1px solid #2c2f52;
+    padding:8px 20px calc(22px + env(safe-area-inset-bottom));
+    transform:translateY(115%);transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+  .sheet.show{transform:translateY(0)}
+  .sheet .grip{width:40px;height:4px;border-radius:4px;background:#ffffff2e;margin:0 auto 14px}
+  .sheet .sem{font-size:72px;text-align:center;line-height:1;
+    filter:drop-shadow(0 8px 18px #0008)}
+  .sheet .stt{font-size:20px;font-weight:900;text-align:center;margin-top:10px}
+  .sheet .sst{font-size:13px;color:var(--hint);text-align:center;margin-top:3px}
+  .sheet .sbal{display:flex;justify-content:space-between;align-items:center;
+    background:#0000003d;border-radius:14px;padding:12px 14px;margin:16px 0 6px;font-size:13px}
+  .sheet .sbal .v{font-weight:900;color:var(--accent2)}
+  .sheet .warn-t{color:var(--warn);font-size:12.5px;text-align:center;margin-top:8px}
   .hidden{display:none}
 </style>
 </head>
@@ -101,8 +141,17 @@
   </div>
 
   <div id="view-shop" class="hidden">
-    <h2>🎁 Магазин наград</h2>
-    <div id="shop"></div>
+    <div class="shop-hero">
+      <div class="sh-t">🎁 Витрина наград</div>
+      <div class="sh-s">Добывай Мана-руду — меняй на настоящие подарки Telegram.
+        Никаких звёзд: цена уже в руде, подарок прилетает мгновенно.</div>
+    </div>
+    <div class="cats" id="cats">
+      <div class="cat active" data-c="all">Все</div>
+      <div class="cat" data-c="premium">Премиум</div>
+    </div>
+    <div class="grid" id="shop"></div>
+    <div id="shop-extra"></div>
   </div>
 
   <div id="view-top" class="hidden">
@@ -115,6 +164,23 @@
   <div class="tab active" data-v="tasks"><span class="ic">📋</span>Задания</div>
   <div class="tab" data-v="shop"><span class="ic">🎁</span>Магазин</div>
   <div class="tab" data-v="top"><span class="ic">🏆</span>Топ</div>
+</div>
+
+<div class="sheet-bg" id="sheetBg"></div>
+<div class="sheet" id="sheet">
+  <div class="grip"></div>
+  <div class="sem" id="shEm">🎁</div>
+  <div class="stt" id="shTt">—</div>
+  <div class="sst" id="shSt">—</div>
+  <div class="sbal">
+    <span>Твоя Мана-руда</span><span class="v" id="shBal">—</span>
+  </div>
+  <div class="sbal">
+    <span>Цена подарка</span><span class="v" id="shPrice">—</span>
+  </div>
+  <button class="btn" id="shBuy">Обменять</button>
+  <div class="warn-t hidden" id="shWarn"></div>
+  <button class="btn sec" id="shCancel" style="margin-top:8px">Отмена</button>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -203,38 +269,89 @@ function renderTasks(s){
   s.tasks.forEach(t=>box.appendChild(taskCard(t)));
 }
 
-async function renderShop(){
-  const box=document.getElementById("shop"); box.innerHTML='<div class="skel"></div>';
-  const r=await api("/api/shop");
-  if(!r.ok){box.innerHTML='<div class="empty">Ошибка</div>';return;}
-  box.innerHTML="";
-  r.catalog.forEach(g=>{
-    const c=document.createElement("div"); c.className="card gift";
-    c.innerHTML=`<div class="em">${g.emoji}</div><div class="gi">
-      <div class="gt">${escapeHtml(g.title)}</div>
-      <div class="gs">${escapeHtml(g.subtitle)} · ${fmt(g.mana_price)} руды</div></div>`;
-    const b=document.createElement("button"); b.className="btn"; b.style.width="auto"; b.style.margin=0;
-    b.style.padding="10px 14px"; b.textContent="Обменять"; b.disabled=!g.affordable;
-    b.onclick=()=>redeem(g.key,b);
-    c.appendChild(b); box.appendChild(c);
+let SHOPDATA=null, CAT="all", SHEET_G=null;
+
+async function renderShop(force){
+  const box=document.getElementById("shop");
+  if(force||!SHOPDATA){
+    box.innerHTML='<div class="skel"></div><div class="skel"></div>';
+    const r=await api("/api/shop");
+    if(!r.ok){ box.innerHTML='<div class="empty">Открой витрину из Telegram.</div>'; return; }
+    SHOPDATA=r;
+  }
+  drawShop();
+}
+
+function drawShop(){
+  const box=document.getElementById("shop"); box.innerHTML="";
+  const list=SHOPDATA.catalog.filter(g=>
+    CAT==="all" ? true : (CAT==="premium" ? g.collectible : !g.collectible));
+  list.forEach(g=>{
+    const c=document.createElement("div");
+    c.className="gcard"+(g.affordable?"":" locked");
+    c.innerHTML=`${g.collectible?'<div class="badge">TOP</div>':''}
+      <div class="gem2">${g.emoji}</div>
+      <div class="gtt">${escapeHtml(g.title)}</div>
+      <div class="price">🔹 ${fmt(g.mana_price)}</div>`;
+    c.onclick=()=>openSheet(g);
+    box.appendChild(c);
   });
-  if(r.crypto_enabled){
-    const c=document.createElement("div"); c.className="card";
-    c.innerHTML=`<div class="task-t">🪙 Вывод в ${r.crypto_asset}</div>
-      <div class="task-meta">Минимум ${fmt(r.crypto_min)} руды · через @CryptoBot</div>`;
+  const ex=document.getElementById("shop-extra"); ex.innerHTML="";
+  if(SHOPDATA.crypto_enabled){
+    const c=document.createElement("div"); c.className="card"; c.style.marginTop="14px";
+    c.innerHTML=`<div class="task-t">🪙 Вывод в ${escapeHtml(SHOPDATA.crypto_asset||"крипте")}</div>
+      <div class="task-meta">Минимум ${fmt(SHOPDATA.crypto_min)} руды · через @CryptoBot</div>`;
     const b=document.createElement("button"); b.className="btn"; b.textContent="Вывести в крипте";
-    b.onclick=()=>cryptoPayout(r.crypto_min);
-    c.appendChild(b); box.appendChild(c);
+    b.onclick=()=>cryptoPayout(SHOPDATA.crypto_min);
+    c.appendChild(b); ex.appendChild(c);
   }
 }
 
-async function redeem(key,b){
-  b.disabled=true;
-  const r=await api("/api/redeem",{key});
-  if(!r.ok){ toast(r.error||"Не вышло","bad"); b.disabled=false; return; }
-  toast(r.sent?"🎁 Подарок отправлен!":"✅ Заявка создана","ok");
-  await load(); renderShop();
+function openSheet(g){
+  SHEET_G=g;
+  document.getElementById("shEm").textContent=g.emoji;
+  document.getElementById("shTt").textContent=g.title;
+  document.getElementById("shSt").textContent=g.subtitle;
+  document.getElementById("shBal").textContent="🔹 "+fmt(SHOPDATA.balance);
+  document.getElementById("shPrice").textContent="🔹 "+fmt(g.mana_price);
+  const buy=document.getElementById("shBuy"), warn=document.getElementById("shWarn");
+  if(g.affordable){
+    buy.disabled=false; buy.textContent="Обменять за 🔹 "+fmt(g.mana_price);
+    warn.classList.add("hidden");
+  }else{
+    buy.disabled=true; buy.textContent="Не хватает руды";
+    warn.textContent="Нужно ещё 🔹 "+fmt(g.mana_price-SHOPDATA.balance)+" — добудь в заданиях и подземелье.";
+    warn.classList.remove("hidden");
+  }
+  document.getElementById("sheetBg").classList.add("show");
+  document.getElementById("sheet").classList.add("show");
+  if(tg?.HapticFeedback) tg.HapticFeedback.impactOccurred("light");
 }
+function closeSheet(){
+  document.getElementById("sheetBg").classList.remove("show");
+  document.getElementById("sheet").classList.remove("show");
+}
+
+async function redeem(){
+  if(!SHEET_G) return;
+  const buy=document.getElementById("shBuy");
+  buy.disabled=true; buy.textContent="Отправляем…";
+  const r=await api("/api/redeem",{key:SHEET_G.key});
+  if(!r.ok){ toast(r.error||"Не вышло","bad"); buy.disabled=false; buy.textContent="Обменять"; return; }
+  closeSheet();
+  toast(r.sent?"🎁 Подарок отправлен!":"✅ Заявка создана","ok");
+  await load(); await renderShop(true);
+}
+
+document.getElementById("shBuy").onclick=redeem;
+document.getElementById("shCancel").onclick=closeSheet;
+document.getElementById("sheetBg").onclick=closeSheet;
+document.querySelectorAll("#cats .cat").forEach(el=>{
+  el.onclick=()=>{
+    document.querySelectorAll("#cats .cat").forEach(x=>x.classList.remove("active"));
+    el.classList.add("active"); CAT=el.dataset.c; drawShop();
+  };
+});
 
 async function cryptoPayout(min){
   const v=prompt("Сколько руды вывести? (минимум "+min+")");
@@ -242,7 +359,7 @@ async function cryptoPayout(min){
   if(!amount||amount<=0){toast("Неверная сумма","bad");return;}
   const r=await api("/api/payout_crypto",{amount});
   if(!r.ok){ toast(r.error||"Не вышло","bad"); return; }
-  toast("✅ Заявка на вывод создана","ok"); await load(); renderShop();
+  toast("✅ Заявка на вывод создана","ok"); await load(); renderShop(true);
 }
 
 async function renderTop(){
@@ -275,12 +392,22 @@ document.querySelectorAll(".tab").forEach(tab=>{
     tab.classList.add("active");
     const v=tab.dataset.v;
     ["tasks","shop","top"].forEach(x=>document.getElementById("view-"+x).classList.toggle("hidden",x!==v));
-    if(v==="shop") renderShop();
+    if(v==="shop") renderShop(true);
     if(v==="top") renderTop();
   };
 });
 
-load();
+function openInitialTab(){
+  const p=new URLSearchParams(location.search);
+  let t = (tg?.initDataUnsafe?.start_param || p.get("tab") ||
+           (location.hash||"").replace("#","")).trim();
+  if(["tasks","shop","top"].includes(t)){
+    const el=document.querySelector('.tab[data-v="'+t+'"]');
+    if(el) el.click();
+  }
+}
+
+load().then(openInitialTab);
 </script>
 </body>
 </html>

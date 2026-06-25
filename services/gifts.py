@@ -13,7 +13,7 @@ from utils import get_config
 from utils.economy_rates import GiftOffer, build_gift_catalog, gift_by_key
 
 
-_gift_id_cache: dict[int, str] = {}
+_gift_id_cache: dict[str, str] = {}
 _cache_lock = asyncio.Lock()
 
 
@@ -27,11 +27,21 @@ def get_catalog() -> list[GiftOffer]:
     )
 
 
-async def resolve_gift_id(bot: Bot, stars: int) -> Optional[str]:
-    """Найти gift_id по цене в ⭐ (кэш на сессию)."""
+def _gift_emoji(g) -> str:
+    return str(getattr(getattr(g, "sticker", None), "emoji", "") or "")
+
+
+async def resolve_gift_id(bot: Bot, stars: int, emoji: str = "") -> Optional[str]:
+    """Найти gift_id по цене в ⭐ и (по возможности) по эмодзи (кэш на сессию).
+
+    Сначала ищем подарок ровно нужного номинала и с тем же эмодзи (Сердечко,
+    Роза и т.д.), чтобы пользователь получил именно выбранный подарок. Если
+    такого нет — берём любой того же номинала, иначе ближайший по цене.
+    """
+    cache_key = f"{stars}:{emoji}"
     async with _cache_lock:
-        if stars in _gift_id_cache:
-            return _gift_id_cache[stars]
+        if cache_key in _gift_id_cache:
+            return _gift_id_cache[cache_key]
 
     try:
         gifts = await bot.get_available_gifts()
@@ -40,24 +50,32 @@ async def resolve_gift_id(bot: Bot, stars: int) -> Optional[str]:
         return None
 
     items = getattr(gifts, "gifts", None) or []
-    # Берём самый дешёвый подарок с нужной star_count (не sold out).
-    candidates = [
+
+    def available(g) -> bool:
+        return (getattr(g, "remaining_count", 1) or 1) > 0
+
+    same_price = [
         g for g in items
-        if getattr(g, "star_count", 0) == stars
-        and (getattr(g, "remaining_count", 1) or 1) > 0
+        if getattr(g, "star_count", 0) == stars and available(g)
     ]
-    if not candidates:
+    chosen = None
+    if emoji:
+        chosen = next((g for g in same_price if _gift_emoji(g) == emoji), None)
+    if chosen is None and same_price:
+        chosen = same_price[0]
+    if chosen is None:
         # Fallback: ближайший по цене (если TG изменил номиналы).
-        candidates = sorted(
-            [g for g in items if (getattr(g, "remaining_count", 1) or 1) > 0],
+        nearest = sorted(
+            [g for g in items if available(g)],
             key=lambda g: abs(getattr(g, "star_count", 0) - stars),
         )
-    if not candidates:
+        chosen = nearest[0] if nearest else None
+    if chosen is None:
         return None
 
-    gid = str(getattr(candidates[0], "id", ""))
+    gid = str(getattr(chosen, "id", ""))
     if gid:
-        _gift_id_cache[stars] = gid
+        _gift_id_cache[cache_key] = gid
     return gid or None
 
 
@@ -72,7 +90,7 @@ async def send_telegram_gift(
     Отправить подарок пользователю. Возвращает (ok, message).
     Бот тратит свои ⭐ с баланса.
     """
-    gift_id = await resolve_gift_id(bot, offer.stars)
+    gift_id = await resolve_gift_id(bot, offer.stars, offer.emoji)
     if not gift_id:
         return False, (
             f"Не найден подарок за {offer.stars} ⭐ в каталоге Telegram. "

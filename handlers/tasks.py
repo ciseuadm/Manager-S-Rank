@@ -86,12 +86,12 @@ def _tasks_keyboard(tasks: list[dict], user_id: int = 0) -> InlineKeyboardBuilde
     return _tasks_nav(b)
 
 
-def _redeem_keyboard(balance: int) -> InlineKeyboardBuilder:
-    return redeem_keyboard(balance)
+def _redeem_keyboard(balance: int, private: bool = False) -> InlineKeyboardBuilder:
+    return redeem_keyboard(balance, private=private)
 
 
-def _redeem_intro(balance: int) -> str:
-    return redeem_intro(balance)
+def _redeem_intro(balance: int, private: bool = False) -> str:
+    return redeem_intro(balance, private=private)
 
 
 def _task_word(n: int) -> str:
@@ -456,10 +456,11 @@ async def cmd_redeem(message: Message) -> None:
     if not message.from_user:
         return
     balance = await balance_of(message.from_user.id)
-    kb = _redeem_keyboard(balance)
+    is_private = message.chat.type == "private"
+    kb = _redeem_keyboard(balance, is_private)
     kb.row(InlineKeyboardButton(text="⬅️ В меню", callback_data="menu:root"))
     await message.answer(
-        _redeem_intro(balance),
+        _redeem_intro(balance, is_private),
         parse_mode="HTML",
         reply_markup=kb.as_markup(),
     )

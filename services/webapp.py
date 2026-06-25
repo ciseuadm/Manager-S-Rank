@@ -205,6 +205,7 @@ async def api_shop(request: web.Request) -> web.Response:
     catalog = [{
         "key": g.key, "title": g.title, "subtitle": g.subtitle,
         "emoji": g.emoji, "stars": g.stars, "mana_price": g.mana_price,
+        "collectible": g.collectible,
         "affordable": bal >= g.mana_price,
     } for g in get_catalog()]
     cfg = get_config()

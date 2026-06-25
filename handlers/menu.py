@@ -31,7 +31,7 @@ def _root_text(name: str) -> str:
         "команды учить не нужно.\n\n"
         f"{ce('fire')} <b>ПУТЬ К ПЕРВОМУ ПОДАРКУ (≈2 дня):</b>\n"
         f"{ce('check')} 1. Жми «Задания» и выполняй подписки — <b>+100 руды</b> за каждую\n"
-        f"{ce('check')} 2. Набери <b>1000 руды</b> (это реально за пару дней)\n"
+        f"{ce('check')} 2. Набери <b>1200 руды</b> (это реально за пару дней)\n"
         f"{ce('check')} 3. Жми «Подарки» — и Система <b>мгновенно</b> вышлет подарок Telegram\n\n"
         f"{ce('person')} Профиль и ранг охотника\n"
         f"{ce('wallet')} Кошелёк Мана-руды\n"
@@ -194,9 +194,10 @@ async def cb_menu_shop(call: CallbackQuery) -> None:
 async def cb_menu_gifts(call: CallbackQuery) -> None:
     from utils.redeem_ui import redeem_intro, redeem_keyboard
     bal = await balance_of(call.from_user.id)
-    kb = redeem_keyboard(bal)
+    is_private = bool(call.message and call.message.chat and call.message.chat.type == "private")
+    kb = redeem_keyboard(bal, private=is_private)
     kb.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:root"))
-    await edit_screen(call.message, redeem_intro(bal), reply_markup=kb.as_markup())
+    await edit_screen(call.message, redeem_intro(bal, private=is_private), reply_markup=kb.as_markup())
     await call.answer()
 
 

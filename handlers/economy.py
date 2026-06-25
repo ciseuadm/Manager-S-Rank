@@ -194,12 +194,12 @@ async def cb_shop(call: CallbackQuery) -> None:
     if action == "gifts":
         from utils.redeem_ui import redeem_intro, redeem_keyboard
         bal = await balance_of(call.from_user.id)
-        kb = redeem_keyboard(bal)
+        kb = redeem_keyboard(bal, private=is_private)
         kb.row(
             InlineKeyboardButton(text="⬅️ В магазин", callback_data="shop:root"),
             InlineKeyboardButton(text="✖ Закрыть", callback_data="shop:close"),
         )
-        await edit_screen(msg, redeem_intro(bal), reply_markup=kb.as_markup())
+        await edit_screen(msg, redeem_intro(bal, private=is_private), reply_markup=kb.as_markup())
         await call.answer()
         return
 

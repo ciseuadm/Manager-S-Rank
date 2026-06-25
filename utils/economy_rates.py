@@ -25,6 +25,7 @@ class GiftOffer:
     emoji: str
     title: str
     subtitle: str
+    collectible: bool = False
 
 
 def star_rub(stars: int, *, usd_cents_per_1000: int, usd_rub: int) -> float:
@@ -55,15 +56,27 @@ def build_gift_catalog(
     usd_rub: int = USD_RUB_RATE_DEFAULT,
     margin_pct: int = REDEEM_MARGIN_PCT_DEFAULT,
 ) -> list[GiftOffer]:
-    """Каталог подарков Telegram по фиксированным ценам в ⭐ (из витрины TG)."""
-    tiers: list[tuple[str, int, str, str, str]] = [
-        ("gift_15", 15, "💝", "Подарок за 15 ⭐", "Сердце · Мишка"),
-        ("gift_25", 25, "🎁", "Подарок за 25 ⭐", "Коробка · Роза"),
-        ("gift_50", 50, "🎂", "Подарок за 50 ⭐", "Торт · Букет · Ракета"),
-        ("gift_100", 100, "🏆", "Подарок за 100 ⭐", "Кубок · Кольцо · Алмаз"),
+    """Поштучная витрина подарков Telegram (как нативная панель «Отправить
+    подарок»), но цены сразу в Мана-руде. Каждый пункт — конкретный подарок:
+    при обмене бот подбирает в каталоге Telegram подарок этого номинала ⭐ и,
+    по возможности, ровно с этим эмодзи (см. services.gifts.resolve_gift_id).
+
+    collectible=True — «премиальные» дорогие подарки (вкладка «Премиум»)."""
+    # (key, stars, emoji, title, collectible)
+    items: list[tuple[str, int, str, str, bool]] = [
+        ("heart",   15,  "💝", "Сердечко", False),
+        ("teddy",   15,  "🧸", "Мишка",    False),
+        ("giftbox", 25,  "🎁", "Подарок",  False),
+        ("rose",    25,  "🌹", "Роза",     False),
+        ("cake",    50,  "🎂", "Торт",     False),
+        ("bouquet", 50,  "💐", "Букет",    False),
+        ("rocket",  50,  "🚀", "Ракета",   False),
+        ("trophy",  100, "🏆", "Кубок",    True),
+        ("ring",    100, "💍", "Кольцо",   True),
+        ("diamond", 100, "💎", "Алмаз",    True),
     ]
     out: list[GiftOffer] = []
-    for key, stars, emoji, title, subtitle in tiers:
+    for key, stars, emoji, title, collectible in items:
         base = star_mana_cost(
             stars,
             mana_per_rub=mana_per_rub,
@@ -76,7 +89,8 @@ def build_gift_catalog(
             mana_price=mana_with_margin(base, margin_pct),
             emoji=emoji,
             title=title,
-            subtitle=subtitle,
+            subtitle=f"Подарок Telegram · {stars} ⭐",
+            collectible=collectible,
         ))
     return out
 
