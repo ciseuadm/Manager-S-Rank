@@ -102,12 +102,12 @@ async def cb_menu_profile(call: CallbackQuery) -> None:
         f"{ce('person')} <b>КАРТОЧКА ОХОТНИКА</b>\n\n"
         f"{ce('person')} {mention_html(call.from_user)}\n"
         f"{ce('trophy')} Ранг: <b>{card['label']}</b>\n"
-        f"{ce('star')} Звание: <i>{card['title']}</i>\n"
         f"{ce('chartup')} Опыт: <b>{card['xp']}</b>\n\n"
         f"{ce('chart')} Прогресс: {card['progress']}{next_line}{perks_block}\n\n"
         f"<i>{ce('tasks')} Опыт даётся за задания и подземелье.</i>"
     )
-    await edit_screen(call.message, text, reply_markup=menu_nav_keyboard())
+    extra = [InlineKeyboardButton(text="📋 Задания", callback_data="menu:tasks")]
+    await edit_screen(call.message, text, reply_markup=menu_nav_keyboard(extra))
     await call.answer()
 
 

@@ -194,7 +194,6 @@ async def cmd_rank(message: Message) -> None:
         f"⚡ <b>КАРТОЧКА ОХОТНИКА</b>\n\n"
         f"👤 {mention_html(user)}\n"
         f"🏆 Ранг: <b>{card['label']}</b>\n"
-        f"🎖 Звание: <i>{card['title']}</i>\n"
         f"⭐ Опыт: <b>{card['xp']}</b>\n"
         f"💬 Сообщений: <b>{msgs}</b>\n"
         f"⚠️ Предупреждений: <b>{db_user.get('warns', 0)}</b>\n\n"

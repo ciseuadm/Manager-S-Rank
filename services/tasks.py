@@ -549,6 +549,49 @@ async def check_and_credit_task(
     return "misconfig", 0
 
 
+async def check_and_credit_daily_tasks(bot: Bot, user_id: int) -> dict:
+    """
+    Проверяет одним нажатием все задания, показанные пользователю на текущий день.
+    Возвращает счётчики кодов и сумму начисленной руды для UI-ответа.
+    """
+    view = await daily_tasks_view(user_id)
+    result = {
+        "checked": 0,
+        "credited": 0,
+        "reward": 0,
+        "already": 0,
+        "not_subscribed": 0,
+        "locked": 0,
+        "daily_limit": 0,
+        "postback_wait": 0,
+        "manual": 0,
+        "inactive": 0,
+        "misconfig": 0,
+        "other": 0,
+    }
+
+    for task in view["tasks"]:
+        result["checked"] += 1
+        mode = task.get("verify_mode") or default_verify_mode(task.get("type", "channel_sub"))
+        if mode not in {"membership", "postback"}:
+            result["manual"] += 1
+            continue
+
+        code, reward = await check_and_credit_task(bot, user_id, task["id"])
+        if code == "credited":
+            result["credited"] += 1
+            result["reward"] += reward
+        elif code in result:
+            result[code] += 1
+        else:
+            result["other"] += 1
+
+        if code in {"locked", "daily_limit"}:
+            break
+
+    return result
+
+
 async def credit_postback(bot: Bot, user_id: int, task_id: int) -> tuple[str, int]:
     """
     Серверный зачёт задания по постбэку (бот рекламодателя подтвердил выполнение

@@ -27,10 +27,10 @@ from database import (
 )
 from services import (
     daily_tasks_view, check_and_credit_subscription, check_and_credit_task,
-    watch_claim, credit_pending_completion, reject_pending_completion,
+    check_and_credit_daily_tasks, watch_claim, credit_pending_completion, reject_pending_completion,
     request_payout, request_crypto_payout,
     refund_payout, mana_to_usd_cents, mana_to_rub, balance_of,
-    user_streak, streak_multiplier, find_unsubscribed_channels, resubscribe_keyboard,
+    find_unsubscribed_channels, resubscribe_keyboard,
 )
 from services.crypto import crypto_enabled, crypto_auto, mana_to_crypto_amount, transfer as crypto_transfer
 from services.gifts import get_catalog, send_telegram_gift, offer_from_product
@@ -47,18 +47,13 @@ router = Router()
 # ── Клавиатуры ───────────────────────────────────────────────────────────────
 
 def _tasks_nav(b: InlineKeyboardBuilder) -> InlineKeyboardBuilder:
-    """Низ экрана заданий: «Обновить» + «Назад» (в главное меню).
-
-    Кнопки общие для всех вариантов экрана и для входа из /tasks и из /menu —
-    поэтому при «Обновить» навигация и премиум-эмодзи не теряются.
-    """
-    b.row(InlineKeyboardButton(text="🔄 Обновить", callback_data="task:list"))
+    """Низ экрана заданий: «Назад» (в главное меню)."""
     b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:root"))
     return b
 
 
 _TYPE_ICON = {
-    "channel_sub": "📣", "chat_join": "👥", "watch": "▶️",
+    "channel_sub": "", "chat_join": "👥", "watch": "▶️",
     "quiz": "❓", "bot_start": "🤖", "react": "👍", "boost": "🚀", "external": "🌐",
 }
 
@@ -73,7 +68,6 @@ def _tasks_keyboard(tasks: list[dict], user_id: int = 0) -> InlineKeyboardBuilde
             f"https://t.me/{t['channel_username']}" if t.get("channel_username") else None
         )
         title = (t.get("title") or "Задание")[:32]
-        reward = t["reward"]
 
         if mode == "postback":
             # Персональная ссылка с подписанным токеном: бот-цель вернёт его в
@@ -81,31 +75,14 @@ def _tasks_keyboard(tasks: list[dict], user_id: int = 0) -> InlineKeyboardBuilde
             token = sign_task_token(user_id, t["id"]) if user_id else ""
             link = deeplink_with_token(url or "", token) or url
             if link:
-                b.row(InlineKeyboardButton(text=f"{icon} {title} → +{reward}", url=link))
-            b.row(InlineKeyboardButton(
-                text="🔄 Я выполнил — проверить",
-                callback_data=f"task:check:{t['id']}"))
+                text = f"{icon} {title}" if icon else title
+                b.row(InlineKeyboardButton(text=text, url=link))
             continue
 
         if url:
-            b.row(InlineKeyboardButton(text=f"{icon} {title}", url=url))
-        if mode == "membership":
-            b.row(InlineKeyboardButton(
-                text=f"🔍 Проверить и забрать +{reward} руды",
-                callback_data=f"task:check:{t['id']}"))
-        elif mode == "timer":
-            secs = t.get("duration_sec", 30) or 30
-            b.row(InlineKeyboardButton(
-                text=f"✅ Я посмотрел ({secs}с) → +{reward}",
-                callback_data=f"task:watch:{t['id']}"))
-        elif mode == "quiz":
-            b.row(InlineKeyboardButton(
-                text=f"✍️ Ответить → +{reward} руды",
-                callback_data=f"task:quizinfo:{t['id']}"))
-        else:  # proof
-            b.row(InlineKeyboardButton(
-                text=f"📤 Отправить пруф → +{reward} руды",
-                callback_data=f"task:proofinfo:{t['id']}"))
+            text = f"{icon} {title}" if icon else title
+            b.row(InlineKeyboardButton(text=text, url=url))
+    b.row(InlineKeyboardButton(text="✅ Проверить задания", callback_data="task:check_all"))
     return _tasks_nav(b)
 
 
@@ -117,6 +94,14 @@ def _redeem_intro(balance: int) -> str:
     return redeem_intro(balance)
 
 
+def _task_word(n: int) -> str:
+    if n % 10 == 1 and n % 100 != 11:
+        return "задание"
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return "задания"
+    return "заданий"
+
+
 # ── /tasks ───────────────────────────────────────────────────────────────────
 
 async def _render_tasks(user_id: int) -> tuple[str, InlineKeyboardBuilder]:
@@ -125,14 +110,6 @@ async def _render_tasks(user_id: int) -> tuple[str, InlineKeyboardBuilder]:
     tasks = view["tasks"]
     rank = view["rank"]
     done_today, limit, remaining = view["done_today"], view["limit"], view["remaining"]
-
-    streak = await user_streak(user_id)
-    mult = streak_multiplier(streak)
-    mult_line = (
-        f"{ce('fire')} Стрик подписок: <b>{streak}</b> → множитель награды <b>×{mult:.1f}</b>\n"
-        if streak > 0 else
-        f"{ce('fire')} Каждая сохранённая подписка повышает множитель будущих наград!\n"
-    )
 
     # Привилегия ранга: надбавка к награде за задание (S/SS/SSS).
     perk = rank_perks(rank)
@@ -143,7 +120,7 @@ async def _render_tasks(user_id: int) -> tuple[str, InlineKeyboardBuilder]:
             f"<b>+{perk['task_reward_pct']}% к награде</b>\n"
         )
 
-    limit_line = f"{ce('tasks')} Заданий сегодня: <b>{done_today}/{limit}</b>\n"
+    limit_line = f"{ce('tasks')} Заданий сегодня: <b>{limit}</b>\n"
 
     ref_line = (
         f"{ce('agent')} Зови охотников по своей ссылке — Система платит рудой за "
@@ -177,16 +154,15 @@ async def _render_tasks(user_id: int) -> tuple[str, InlineKeyboardBuilder]:
         return text, _tasks_nav(InlineKeyboardBuilder())
 
     text = (
-        f"{ce('tasks')} <b>ЗАДАНИЯ ГИЛЬДИИ</b>\n"
-        f"<i>{ce('spark')} Твой личный подбор на сегодня — без повторов. Выполняй и добывай руду.</i>\n\n"
+        f"{ce('tasks')} <b>ЗАДАНИЯ ГИЛЬДИИ</b>\n\n"
         f"{limit_line}"
         f"{ce('coin')} Твой баланс: <b>{format_mana(balance)}</b>\n"
-        f"{mult_line}"
         f"{perk_line}\n"
-        f"{ce('check')} Подпишись на канал по кнопке.\n"
-        f"{ce('check')} Нажми «Проверить» — Система начислит руду.\n"
-        f"{ce('spark')} Оставайся в каналах заданий — пока ты подписан, Система "
-        "открывает новые задания (руду не забираем).\n\n"
+        f"{ce('check')} Подпишись на каналы по кнопкам ниже.\n"
+        f"{ce('check')} За каждое выполненное задание — "
+        f"<b>+{get_config().task_reward_subscribe} руды</b>.\n"
+        f"{ce('check')} Когда закончишь, нажми «Проверить задания» — "
+        "Система проверит весь список.\n\n"
         f"{ref_line}"
     )
     return text, _tasks_keyboard(tasks, user_id)
@@ -209,6 +185,80 @@ async def cb_task_list(call: CallbackQuery) -> None:
     text, kb = await _render_tasks(call.from_user.id)
     await edit_screen(call.message, text, reply_markup=kb.as_markup())
     await call.answer()
+
+
+@router.callback_query(F.data == "task:check_all")
+async def cb_task_check_all(call: CallbackQuery, bot: Bot) -> None:
+    result = await check_and_credit_daily_tasks(bot, call.from_user.id)
+
+    if result["credited"]:
+        message = (
+            f"✅ +{result['reward']} руды зачислено за "
+            f"{result['credited']} {_task_word(result['credited'])}."
+        )
+        if result["not_subscribed"]:
+            message += "\nОстальные подписки пока не найдены."
+        elif result["postback_wait"]:
+            message += "\nЧасть заданий зачтётся автоматически после выполнения."
+        elif result["manual"]:
+            message += "\nЧасть заданий требует отдельного действия внутри задания."
+        await call.answer(message, show_alert=True)
+        text, kb = await _render_tasks(call.from_user.id)
+        await edit_screen(call.message, text, reply_markup=kb.as_markup())
+        return
+
+    if result["checked"] == 0:
+        await call.answer("📋 Сейчас нет заданий для проверки.", show_alert=True)
+        return
+
+    if result["locked"]:
+        missing = await find_unsubscribed_channels(bot, call.from_user.id)
+        await call.answer(
+            "⏳ Сначала вернись на канал прошлого задания — кнопки ниже.",
+            show_alert=True,
+        )
+        if missing:
+            try:
+                await call.message.answer(
+                    "📌 <b>Вернись на канал, чтобы продолжить</b>\n\n"
+                    "Чтобы получать новые задания, нужно оставаться подписанным на "
+                    "каналы прошлых спонсоров. Подпишись обратно по кнопкам ниже — "
+                    "и снова жми «Проверить задания». Никаких штрафов: твою руду "
+                    "и опыт мы не трогаем.",
+                    parse_mode="HTML",
+                    reply_markup=resubscribe_keyboard(missing),
+                )
+            except Exception:
+                pass
+        return
+
+    if result["daily_limit"]:
+        await call.answer(
+            "📅 На сегодня лимит заданий исчерпан. Новые откроются завтра.",
+            show_alert=True,
+        )
+    elif result["postback_wait"]:
+        await call.answer(
+            "⏳ Пока не вижу выполнения. Открой задания по кнопкам — Система зачтёт "
+            "их автоматически после выполнения.",
+            show_alert=True,
+        )
+    elif result["manual"]:
+        await call.answer(
+            "📋 Часть заданий требует отдельного действия внутри задания.",
+            show_alert=True,
+        )
+    elif result["not_subscribed"]:
+        await call.answer(
+            "❌ Подписки не найдены. Подпишись на каналы заданий и нажми "
+            "«Проверить задания» снова.",
+            show_alert=True,
+        )
+    else:
+        await call.answer(
+            "⚠️ Задания временно недоступны для проверки. Попробуй позже.",
+            show_alert=True,
+        )
 
 
 @router.callback_query(F.data.startswith("task:done:"))
@@ -238,7 +288,8 @@ async def cb_task_check(call: CallbackQuery, bot: Bot) -> None:
                     "📌 <b>Вернись на канал, чтобы продолжить</b>\n\n"
                     "Чтобы получать новые задания, нужно оставаться подписанным на "
                     "каналы прошлых спонсоров. Подпишись обратно по кнопкам ниже — "
-                    "и снова жми «Проверить». Никаких штрафов: твою руду и опыт мы не трогаем.",
+                    "и снова жми «Проверить задания». Никаких штрафов: твою руду "
+                    "и опыт мы не трогаем.",
                     parse_mode="HTML",
                     reply_markup=resubscribe_keyboard(missing),
                 )
@@ -261,7 +312,8 @@ async def cb_task_check(call: CallbackQuery, bot: Bot) -> None:
         )
     elif code == "not_subscribed":
         await call.answer(
-            "❌ Подписка не найдена. Подпишись на канал задания и нажми «Проверить» снова.",
+            "❌ Подписка не найдена. Подпишись на канал задания и нажми "
+            "«Проверить задания» снова.",
             show_alert=True,
         )
     elif code == "inactive":
