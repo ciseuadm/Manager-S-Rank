@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
 # ── Базовые константы (можно переопределить через config / .env) ─────────────
 
@@ -26,6 +27,9 @@ class GiftOffer:
     title: str
     subtitle: str
     collectible: bool = False
+    # Живые данные из getAvailableGifts (заполняются в services.gifts.get_live_catalog):
+    gift_id: str = ""             # реальный id подарка в Telegram (для точной отправки)
+    remaining: Optional[int] = None   # остаток лимитированного подарка; None = без лимита
 
 
 def star_rub(stars: int, *, usd_cents_per_1000: int, usd_rub: int) -> float:

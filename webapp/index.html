@@ -311,7 +311,8 @@ function openSheet(g){
   SHEET_G=g;
   document.getElementById("shEm").textContent=g.emoji;
   document.getElementById("shTt").textContent=g.title;
-  document.getElementById("shSt").textContent=g.subtitle;
+  document.getElementById("shSt").textContent=g.subtitle +
+    (typeof g.remaining==="number" ? " · осталось "+fmt(g.remaining) : "");
   document.getElementById("shBal").textContent="🔹 "+fmt(SHOPDATA.balance);
   document.getElementById("shPrice").textContent="🔹 "+fmt(g.mana_price);
   const buy=document.getElementById("shBuy"), warn=document.getElementById("shWarn");

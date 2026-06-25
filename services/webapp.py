@@ -199,15 +199,16 @@ async def api_shop(request: web.Request) -> web.Response:
     user_id, _body, _ = await _auth(request)
     if user_id is None:
         return _unauth()
-    from services.gifts import get_catalog
+    from services.gifts import get_live_catalog
     from database import get_wallet_balance
     bal = await get_wallet_balance(user_id)
+    # Живой каталог: наличие синхронизировано с Telegram (getAvailableGifts).
     catalog = [{
         "key": g.key, "title": g.title, "subtitle": g.subtitle,
         "emoji": g.emoji, "stars": g.stars, "mana_price": g.mana_price,
-        "collectible": g.collectible,
+        "collectible": g.collectible, "remaining": g.remaining,
         "affordable": bal >= g.mana_price,
-    } for g in get_catalog()]
+    } for g in await get_live_catalog(request.app["bot"])]
     cfg = get_config()
     return web.json_response({
         "ok": True, "balance": bal, "catalog": catalog,
@@ -222,11 +223,11 @@ async def api_redeem(request: web.Request) -> web.Response:
     if user_id is None:
         return _unauth()
     from services import request_payout
-    from services.gifts import get_catalog, send_telegram_gift
+    from services.gifts import get_live_catalog, send_telegram_gift
     from database import get_wallet_balance, set_payout_status
 
     key = str(body.get("key", ""))
-    offer = next((g for g in get_catalog() if g.key == key), None)
+    offer = next((g for g in await get_live_catalog(request.app["bot"]) if g.key == key), None)
     if not offer:
         return web.json_response({"ok": False, "error": "offer_not_found"})
     ok, req_id, err = await request_payout(user_id, offer.mana_price, f"gift:{offer.key}")

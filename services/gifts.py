@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import asyncio
+import time
+from dataclasses import replace
 from typing import Optional
 
 from aiogram import Bot
@@ -16,6 +18,13 @@ from utils.economy_rates import GiftOffer, build_gift_catalog, gift_by_key
 _gift_id_cache: dict[str, str] = {}
 _cache_lock = asyncio.Lock()
 
+# Снимок «живых» подарков Telegram (getAvailableGifts). Цены подарков в ⭐ у
+# Telegram фиксированные и не «скачут» посекундно — меняется в основном наличие
+# (лимитированные распродаются). Поэтому держим кэш и обновляем его раз в
+# несколько минут, а не каждую секунду (иначе упрёмся в лимиты API без пользы).
+_live_cache: dict[str, object] = {"ts": 0.0, "gifts": []}
+_LIVE_TTL = 300  # сек: автообновление снимка наличия раз в 5 минут
+
 
 def get_catalog() -> list[GiftOffer]:
     cfg = get_config()
@@ -25,6 +34,67 @@ def get_catalog() -> list[GiftOffer]:
         usd_rub=cfg.usd_rub_rate,
         margin_pct=cfg.redeem_margin_pct,
     )
+
+
+def _in_stock(g) -> bool:
+    """В наличии: безлимитный (remaining_count = None) или остаток > 0."""
+    rc = getattr(g, "remaining_count", None)
+    return rc is None or rc > 0
+
+
+async def _live_gifts(bot: Bot, *, force: bool = False) -> list:
+    """Кэшированный снимок доступных боту подарков Telegram (getAvailableGifts).
+
+    Обновляется не чаще раза в _LIVE_TTL секунд. При ошибке API возвращаем
+    прошлый снимок (не роняем витрину)."""
+    now = time.time()
+    cached = _live_cache.get("gifts") or []
+    if not force and cached and now - float(_live_cache.get("ts", 0)) < _LIVE_TTL:
+        return cached  # type: ignore[return-value]
+    try:
+        res = await bot.get_available_gifts()
+        items = list(getattr(res, "gifts", None) or [])
+    except Exception as e:
+        logger.warning(f"[GIFTS] live refresh failed: {e}")
+        return cached  # type: ignore[return-value]
+    _live_cache["gifts"] = items
+    _live_cache["ts"] = now
+    return items
+
+
+async def get_live_catalog(bot: Bot) -> list[GiftOffer]:
+    """Витрина, синхронизированная с реальным наличием подарков у Telegram.
+
+    Берём нашу подобранную витрину (с ценами в руде) и сопоставляем каждую
+    позицию с живым подарком того же номинала ⭐ и эмодзи: проставляем реальный
+    gift_id (для точной отправки) и остаток, а распроданные/исчезнувшие позиции
+    скрываем. Если API недоступен — отдаём статичную витрину (отправка всё равно
+    подберёт подарок вживую в момент покупки)."""
+    static = get_catalog()
+    items = await _live_gifts(bot)
+    if not items:
+        return static
+
+    by_star: dict[int, list] = {}
+    for g in items:
+        if not _in_stock(g):
+            continue
+        by_star.setdefault(int(getattr(g, "star_count", 0)), []).append(g)
+
+    out: list[GiftOffer] = []
+    for off in static:
+        cands = by_star.get(off.stars, [])
+        match = next((g for g in cands if _gift_emoji(g) == off.emoji), None)
+        if match is None and cands:
+            match = cands[0]
+        if match is None:
+            continue  # этого номинала сейчас нет в наличии — прячем
+        out.append(replace(
+            off,
+            gift_id=str(getattr(match, "id", "")),
+            remaining=getattr(match, "remaining_count", None),
+        ))
+    return out or static
 
 
 def _gift_emoji(g) -> str:
@@ -90,7 +160,9 @@ async def send_telegram_gift(
     Отправить подарок пользователю. Возвращает (ok, message).
     Бот тратит свои ⭐ с баланса.
     """
-    gift_id = await resolve_gift_id(bot, offer.stars, offer.emoji)
+    # Если витрина уже привязала реальный id (live-каталог) — шлём точно его;
+    # иначе подбираем подарок нужного номинала и эмодзи вживую.
+    gift_id = getattr(offer, "gift_id", "") or await resolve_gift_id(bot, offer.stars, offer.emoji)
     if not gift_id:
         return False, (
             f"Не найден подарок за {offer.stars} ⭐ в каталоге Telegram. "
