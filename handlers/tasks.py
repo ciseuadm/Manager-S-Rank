@@ -497,34 +497,49 @@ async def cmd_payout_crypto(message: Message, bot: Bot) -> None:
         )
         return
 
-    ok, req_id, err = await request_crypto_payout(message.from_user.id, amount)
+    ok, req_id, err = await request_crypto_payout(message.from_user.id, amount, bot=bot)
     if not ok:
         await message.answer(f"❌ {err}")
         return
 
-    crypto_amt = mana_to_crypto_amount(amount)
-    await message.answer(
-        "✅ <b>ЗАЯВКА НА КРИПТО-ВЫВОД СОЗДАНА</b>\n\n"
-        f"№{req_id}\n"
-        f"Списано: <b>{format_mana(amount)}</b> ≈ <b>{crypto_amt:.2f} {cfg.crypto_asset}</b>\n"
-        "Монарх подтвердит заявку — деньги придут в @CryptoBot.",
-        parse_mode="HTML",
-    )
-    if cfg.owner_id and req_id:
-        try:
-            await bot.send_message(
-                cfg.owner_id,
-                "🪙 <b>НОВАЯ ЗАЯВКА НА КРИПТО-ВЫВОД</b>\n\n"
-                f"№{req_id}\n"
-                f"Пользователь: <code>{message.from_user.id}</code> "
-                f"({mention_html_raw(message.from_user.id, message.from_user.full_name)})\n"
-                f"Сумма: <b>{format_mana(amount)}</b> ≈ <b>{crypto_amt:.2f} {cfg.crypto_asset}</b>\n\n"
-                f"Подтвердить: /approve {req_id}\n"
-                f"Отклонить: /reject {req_id}",
-                parse_mode="HTML",
-            )
-        except Exception as e:
-            logger.warning(f"[TASKS] owner crypto notify failed: {e}")
+    from database import get_payout_request
+    req = await get_payout_request(req_id) if req_id else None
+    already_done = req and req.get("status") in ("fulfilled", "approved")
+
+    from services.crypto import mana_to_crypto_amount_live
+    crypto_amt = await mana_to_crypto_amount_live(amount)
+
+    if already_done:
+        # Авто-вывод уже выполнен внутри request_crypto_payout — просто
+        # подтверждаем (уведомление игроку уже отправлено там).
+        pass
+    else:
+        # Авто-вывод не прошёл или токена нет — заявка в очереди.
+        await message.answer(
+            "✅ <b>ЗАЯВКА НА КРИПТО-ВЫВОД ПРИНЯТА</b>\n\n"
+            f"№{req_id}\n"
+            f"Списано: <b>{format_mana(amount)}</b>\n"
+            f"К получению: ≈ <b>{crypto_amt:.4f} {cfg.crypto_asset}</b> "
+            f"<i>(живой курс CryptoBot)</i>\n\n"
+            "Монарх подтвердит заявку — деньги придут в @CryptoBot.",
+            parse_mode="HTML",
+        )
+        if cfg.owner_id and req_id:
+            try:
+                await bot.send_message(
+                    cfg.owner_id,
+                    "🪙 <b>НОВАЯ ЗАЯВКА НА КРИПТО-ВЫВОД</b>\n\n"
+                    f"№{req_id}\n"
+                    f"Пользователь: <code>{message.from_user.id}</code> "
+                    f"({mention_html_raw(message.from_user.id, message.from_user.full_name)})\n"
+                    f"Сумма: <b>{format_mana(amount)}</b> ≈ "
+                    f"<b>{crypto_amt:.4f} {cfg.crypto_asset}</b> (по рынку)\n\n"
+                    f"Подтвердить: /approve {req_id}\n"
+                    f"Отклонить: /reject {req_id}",
+                    parse_mode="HTML",
+                )
+            except Exception as e:
+                logger.warning(f"[TASKS] owner crypto notify failed: {e}")
 
 
 @router.callback_query(F.data == "redeem:close")
@@ -1155,7 +1170,8 @@ async def cmd_approve(message: Message, bot: Bot) -> None:
     # ── Крипто-вывод: авто-перевод через Crypto Pay (или ручной режим) ──
     if str(req["product"]).startswith("crypto:"):
         cfg = get_config()
-        crypto_amt = mana_to_crypto_amount(req["amount"])
+        from services.crypto import mana_to_crypto_amount_live
+        crypto_amt = await mana_to_crypto_amount_live(req["amount"])
         if crypto_auto():
             ok, info = await crypto_transfer(
                 req["user_id"], crypto_amt,

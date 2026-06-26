@@ -20,7 +20,8 @@ from database import (
     get_task, get_active_tasks, get_completion, get_completed_task_ids,
     record_completion, add_mana, spend_mana, get_wallet_balance,
     get_wallet, set_task_active, task_completions_count,
-    create_payout_request, count_user_credited_subs, add_xp, get_xp,
+    create_payout_request, get_payout_request, set_payout_status,
+    count_user_credited_subs, add_xp, get_xp,
     award_achievement_capped, count_achievement,
     get_user_channel_task_completions, count_user_completions_today,
     get_completion_by_id, set_completion_status, has_pending_completion,
@@ -769,13 +770,24 @@ async def refund_payout(user_id: int, amount: int, ref: str = "") -> None:
     await add_mana(user_id, amount, "redeem_refund", ref_id=ref)
 
 
-async def request_crypto_payout(user_id: int, amount: int) -> tuple[bool, Optional[int], str]:
+async def request_crypto_payout(
+    user_id: int,
+    amount: int,
+    bot=None,
+) -> tuple[bool, Optional[int], str]:
     """
-    Заявка на КРИПТО-вывод руды: проверяет лимиты (минимум, суточный потолок),
-    списывает руду в escrow и регистрирует payout_request с product
-    "crypto:<ASSET>". Подтверждает/исполняет владелец в /payouts (авто-перевод
-    через Crypto Pay при наличии токена, иначе вручную). (ok, req_id, err).
+    Крипто-вывод руды. Проверяет лимиты, списывает руду и сразу выполняет
+    перевод через CryptoBot если токен задан (авто-режим). При недоступности
+    API или нехватке средств в CryptoBot — создаёт заявку в очередь для
+    ручного подтверждения владельцем (/approve). (ok, req_id, err).
+
+    Сумма вывода рассчитывается по ЖИВОМУ курсу CryptoBot — защита от абуза:
+    игрок получает ровно столько, сколько стоит его руда по рынку прямо сейчас.
     """
+    from services.crypto import (
+        crypto_auto, mana_to_crypto_amount_live, transfer as crypto_transfer,
+    )
+
     cfg = get_config()
     if not cfg.crypto_withdraw_enabled:
         return False, None, "Крипто-вывод пока отключён."
@@ -802,4 +814,37 @@ async def request_crypto_payout(user_id: int, amount: int) -> tuple[bool, Option
     usd_cents = mana_to_usd_cents(amount)
     req_id = await create_payout_request(user_id, amount, product, usd_cents)
     logger.info(f"[TASKS] crypto payout request #{req_id} user={user_id} {amount} → {product}")
+
+    # ── Авто-перевод (если CRYPTO_BOT_TOKEN задан) ───────────────────────────
+    if crypto_auto() and bot is not None:
+        # Живой курс: сколько USDT игрок получит прямо сейчас.
+        crypto_amt = await mana_to_crypto_amount_live(amount)
+        ok, info = await crypto_transfer(
+            user_id, crypto_amt,
+            spend_id=f"payout_{req_id}",
+            comment=f"S-Rank payout #{req_id}",
+        )
+        if ok:
+            await set_payout_status(req_id, "fulfilled", note=f"auto:{info}")
+            logger.info(f"[TASKS] crypto auto-fulfilled #{req_id}: {crypto_amt} {cfg.crypto_asset}")
+            # Уведомляем игрока
+            try:
+                await bot.send_message(
+                    user_id,
+                    f"🪙 <b>Крипто-вывод выполнен!</b>\n\n"
+                    f"На твой @CryptoBot зачислено "
+                    f"<b>{crypto_amt:.4f} {cfg.crypto_asset}</b>.\n"
+                    f"Курс по рынку CryptoBot на момент вывода.\n\n"
+                    f"<i>Охотник, твоя руда конвертирована честно. "
+                    f"Приходи за новой! ⚡</i>",
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass
+            return True, req_id, ""
+        else:
+            # Авто-перевод не прошёл (недостаточно средств на счёте CryptoBot
+            # или ошибка API) — оставляем pending, владелец сделает /approve.
+            logger.warning(f"[TASKS] crypto auto-transfer failed #{req_id}: {info}")
+
     return True, req_id, ""

@@ -251,30 +251,38 @@ async def api_payout_crypto(request: web.Request) -> web.Response:
     if user_id is None:
         return _unauth()
     from services import request_crypto_payout
-    from services.crypto import mana_to_crypto_amount
-    from database import get_wallet_balance
+    from services.crypto import mana_to_crypto_amount_live
+    from database import get_wallet_balance, get_payout_request, set_payout_status
 
     amount = int(body.get("amount", 0) or 0)
-    ok, req_id, err = await request_crypto_payout(user_id, amount)
+    bot = request.app["bot"]
+    ok, req_id, err = await request_crypto_payout(user_id, amount, bot=bot)
     if not ok:
         return web.json_response({"ok": False, "error": err})
 
     cfg = get_config()
-    crypto_amt = mana_to_crypto_amount(amount)
-    if cfg.owner_id and req_id:
+    crypto_amt = await mana_to_crypto_amount_live(amount)
+
+    # Уведомляем владельца только если заявка ещё pending (авто-вывод мог
+    # уже выполнить её внутри request_crypto_payout).
+    req = await get_payout_request(req_id) if req_id else None
+    if cfg.owner_id and req_id and req and req.get("status") == "pending":
         try:
-            await request.app["bot"].send_message(
+            await bot.send_message(
                 cfg.owner_id,
                 "🪙 <b>НОВАЯ ЗАЯВКА НА КРИПТО-ВЫВОД (Mini App)</b>\n\n"
                 f"№{req_id}\nПользователь: <code>{user_id}</code>\n"
-                f"Сумма: <b>{amount}</b> ≈ <b>{crypto_amt:.2f} {cfg.crypto_asset}</b>\n\n"
+                f"Сумма: <b>{amount}</b> ≈ <b>{crypto_amt:.4f} {cfg.crypto_asset}</b> "
+                f"(живой курс)\n\n"
                 f"Подтвердить: /approve {req_id}\nОтклонить: /reject {req_id}",
                 parse_mode="HTML",
             )
         except Exception:
             pass
     bal = await get_wallet_balance(user_id)
-    return web.json_response({"ok": True, "req_id": req_id, "balance": bal})
+    return web.json_response({
+        "ok": True, "req_id": req_id, "balance": bal, "crypto_amt": crypto_amt,
+    })
 
 
 async def _notify_owner_payout(bot: Bot, req_id: int, user_id: int, offer) -> None:

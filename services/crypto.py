@@ -9,8 +9,18 @@
 Включается, только когда заданы CRYPTO_WITHDRAW_ENABLED=1 и CRYPTO_BOT_TOKEN.
 Пока токена нет — ветка работает в ручном режиме: владелец подтверждает заявку
 в /payouts и переводит вручную (вся обвязка экономики и лимитов уже готова).
+
+Курс (mana → USDT):
+  Берётся из CryptoBot API (/getExchangeRates) — рыночный, обновляется каждые
+  5 минут. Это защита от абуза: если зафиксировать курс в конфиге, а рынок
+  пойдёт в другую сторону — игроки смогут бесконечно арбитражить против нас.
+  При недоступности API — фолбэк на usd_rub_rate из конфига.
 """
 from __future__ import annotations
+
+import asyncio
+import time
+from typing import Optional
 
 import aiohttp
 from loguru import logger
@@ -29,12 +39,117 @@ def crypto_auto() -> bool:
     return bool(cfg.crypto_withdraw_enabled and cfg.crypto_bot_token)
 
 
-def mana_to_crypto_amount(mana: int) -> float:
-    """Сколько крипто-актива соответствует руде.
+# ── Живой курс из CryptoBot API ──────────────────────────────────────────────
 
-    Курс: руда → ₽ (mana_per_rub) → $ (usd_rub_rate). Для USDT/USDC 1 ед. ≈ $1.
-    Для других активов (TON и т.п.) потребуется отдельный курс — здесь
-    возвращаем долларовый эквивалент (для USDT он же — сумма перевода).
+_rate_cache: dict[str, object] = {"ts": 0.0, "rates": {}}
+_rate_lock = asyncio.Lock()
+_RATE_TTL = 300  # секунд: 5 минут
+
+
+async def _fetch_exchange_rates() -> dict[str, float]:
+    """Загрузить курсы из CryptoBot /getExchangeRates.
+
+    Возвращает словарь {f"{source}_{target}": float}, например
+    {"USDT_USD": 1.0, "RUB_USD": 0.0111, "TON_USD": 3.45, ...}.
+    """
+    cfg = get_config()
+    if not cfg.crypto_bot_token:
+        return {}
+    url = f"{cfg.crypto_api_base.rstrip('/')}/getExchangeRates"
+    headers = {"Crypto-Pay-API-Token": cfg.crypto_bot_token}
+    try:
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url, headers=headers) as resp:
+                data = await resp.json(content_type=None)
+        if not data.get("ok"):
+            logger.warning(f"[CRYPTO] getExchangeRates not ok: {data}")
+            return {}
+        result: dict[str, float] = {}
+        for item in data.get("result") or []:
+            src = item.get("source", "")
+            tgt = item.get("target", "")
+            rate_str = item.get("rate", "")
+            try:
+                result[f"{src}_{tgt}"] = float(rate_str)
+            except (ValueError, TypeError):
+                pass
+        logger.debug(f"[CRYPTO] rates refreshed: {len(result)} pairs")
+        return result
+    except Exception as e:
+        logger.warning(f"[CRYPTO] getExchangeRates failed: {e}")
+        return {}
+
+
+async def _live_rates() -> dict[str, float]:
+    """Кэшированный снимок курсов (обновляется раз в _RATE_TTL секунд)."""
+    async with _rate_lock:
+        now = time.time()
+        if now - float(_rate_cache.get("ts", 0)) >= _RATE_TTL or not _rate_cache.get("rates"):
+            rates = await _fetch_exchange_rates()
+            if rates:
+                _rate_cache["rates"] = rates
+                _rate_cache["ts"] = now
+        return dict(_rate_cache.get("rates") or {})  # type: ignore[arg-type]
+
+
+async def get_asset_per_rub(asset: Optional[str] = None) -> float:
+    """Сколько единиц актива (USDT/TON/…) стоит 1 рубль по рыночному курсу.
+
+    Алгоритм:
+      asset_per_USD = 1 / USD_per_asset  (или USD_per_asset прямым путём)
+      rub_per_USD   = 1 / rates["RUB_USD"]
+      asset_per_rub = asset_per_USD / rub_per_USD
+
+    Фолбэк: если курс не загружен — берём usd_rub_rate из конфига (хуже, но
+    не ломаем сервис).
+    """
+    cfg = get_config()
+    if asset is None:
+        asset = cfg.crypto_asset
+
+    rates = await _live_rates()
+
+    # Прямой путь: asset/RUB или RUB/asset
+    if f"{asset}_RUB" in rates:
+        # сколько USDT стоит 1 RUB — напрямую
+        return float(rates[f"{asset}_RUB"])
+    if f"RUB_{asset}" in rates and rates[f"RUB_{asset}"] > 0:
+        return 1.0 / float(rates[f"RUB_{asset}"])
+
+    # Через USD: asset→USD и RUB→USD
+    asset_usd = rates.get(f"{asset}_USD") or (
+        1.0 / rates[f"USD_{asset}"] if rates.get(f"USD_{asset}") else None
+    )
+    rub_usd = rates.get("RUB_USD") or (
+        1.0 / rates["USD_RUB"] if rates.get("USD_RUB") else None
+    )
+    if asset_usd and rub_usd and rub_usd > 0:
+        return asset_usd / rub_usd
+
+    # Фолбэк: фиксированный курс из конфига (защита от недоступности API)
+    fallback_usd_rub = max(cfg.usd_rub_rate, 1)
+    logger.warning(f"[CRYPTO] live rate unavailable for {asset}/RUB, using config fallback ({fallback_usd_rub})")
+    return 1.0 / fallback_usd_rub  # USDT ≈ $1 → просто 1/usd_rub
+
+
+async def mana_to_crypto_amount_live(mana: int, asset: Optional[str] = None) -> float:
+    """Конвертация руды в крипту по ЖИВОМУ рыночному курсу CryptoBot.
+
+    Формула: руда → рубли (mana_per_rub) → актив (рыночный курс).
+    Используется везде, где считается итоговая сумма выплаты.
+    """
+    cfg = get_config()
+    rub = mana / max(cfg.mana_per_rub, 1)
+    rate = await get_asset_per_rub(asset or cfg.crypto_asset)
+    return round(rub * rate, 4)
+
+
+def mana_to_crypto_amount(mana: int) -> float:
+    """Синхронный фолбэк с фиксированным курсом из конфига.
+
+    Оставлен для синхронных контекстов (тексты уведомлений, предварительная
+    оценка). Для реальных выплат всегда использовать mana_to_crypto_amount_live.
     """
     cfg = get_config()
     rub = mana / max(cfg.mana_per_rub, 1)
